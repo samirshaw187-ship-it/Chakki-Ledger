@@ -203,7 +203,8 @@ class InMemoryDatabase {
   }
 
   public getTransactionByNumber(txnNumber: string): Transaction | undefined {
-    return this.transactions.find((t) => t.transactionNumber.toLowerCase() === txnNumber.toLowerCase());
+    if (!txnNumber) return undefined;
+    return this.transactions.find((t) => t.transactionNumber?.toLowerCase() === txnNumber.toLowerCase());
   }
 
   public getCustomerTransactions(customerId: string): Transaction[] {
@@ -279,7 +280,7 @@ class InMemoryDatabase {
 
     const newPayment: Payment = {
       ...pmt,
-      id: `pmt-${Date.now()}`,
+      id: `pmt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       receiptNumber,
       createdAt: new Date().toISOString(),
     };

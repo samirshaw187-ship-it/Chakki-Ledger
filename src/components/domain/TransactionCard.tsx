@@ -11,6 +11,8 @@ export interface TransactionCardProps {
 }
 
 export const TransactionCard: React.FC<TransactionCardProps> = ({ transaction, onClick }) => {
+  if (!transaction) return null;
+
   const definition = TRANSACTION_DEFINITIONS[transaction.type as TransactionType];
 
   const timeFormatted = transaction.createdAt
@@ -144,7 +146,7 @@ export const TransactionCard: React.FC<TransactionCardProps> = ({ transaction, o
         <div className="space-y-0.5">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-mono font-bold text-stone-600 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
-              {transaction.transactionNumber}
+              {transaction.transactionNumber || 'TXN'}
             </span>
             {transaction.customerCode && (
               <span className="text-[10px] font-mono font-medium text-stone-500 bg-stone-50 px-1.5 py-0.5 rounded">
