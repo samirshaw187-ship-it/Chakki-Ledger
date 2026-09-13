@@ -1,0 +1,29 @@
+@import "tailwindcss";
+
+@media print {
+	.no-print,
+	nav,
+	header:not(.receipt-sheet header),
+	aside,
+	button {
+		display: none !important;
+	}
+
+	body {
+		background: white !important;
+	}
+
+	.receipt-page,
+	.receipt-sheet {
+		max-width: none !important;
+		width: 100% !important;
+		margin: 0 !important;
+		padding: 0 !important;
+		border: 0 !important;
+		box-shadow: none !important;
+	}
+
+	.receipt-sheet {
+		page-break-inside: avoid;
+	}
+}

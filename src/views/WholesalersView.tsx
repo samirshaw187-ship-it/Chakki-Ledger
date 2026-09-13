@@ -1,0 +1,33 @@
+import React, { useMemo, useState } from 'react';
+import { ArrowLeft, Building2, CheckCircle2, Edit3, Phone, Plus, Search, X } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { useAuth } from '../modules/auth';
+import { hasPermission, Permission } from '../modules/auth/permissions';
+import { RiceTradingService } from '../services/rice-trading.service';
+import { WholesalerStatus } from '../types';
+
+export interface WholesalersViewProps { onNavigate: (path: string) => void; wholesalerId?: string; }
+
+export const WholesalersView: React.FC<WholesalersViewProps> = ({ onNavigate, wholesalerId }) => {
+  const { user, role } = useAuth();
+  const [search, setSearch] = useState('');
+  const [showForm, setShowForm] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [name, setName] = useState('');
+  const [company, setCompany] = useState('');
+  const [phone, setPhone] = useState('');
+  const [address, setAddress] = useState('');
+  const canCreate = hasPermission(role, Permission.CREATE_WHOLESALER);
+  const wholesaler = wholesalerId ? RiceTradingService.getWholesaler(wholesalerId) : undefined;
+  const wholesalers = useMemo(() => RiceTradingService.getWholesalers(search), [search]);
+  const sales = wholesaler ? RiceTradingService.getWholesalerSales(wholesaler.id) : [];
+
+  const save = () => {
+    if (!user) return;
+    try { const created = RiceTradingService.createWholesaler({ name, companyName: company, phone, address }, user); setMessage(`${created.name} created as ${created.wholesalerCode}.`); setName(''); setCompany(''); setPhone(''); setAddress(''); setShowForm(false); } catch (error) { setMessage(error instanceof Error ? error.message : 'Unable to create wholesaler.'); }
+  };
+
+  if (wholesaler) return <div className="space-y-4 font-sans pb-10 max-w-3xl mx-auto"><button type="button" onClick={() => onNavigate('/app/wholesalers')} className="text-xs font-semibold text-stone-600 flex items-center gap-1.5"><ArrowLeft className="w-4 h-4" /> Wholesalers</button><section className="bg-white border border-stone-200 rounded-2xl p-5"><div className="flex justify-between gap-3"><div><h1 className="text-xl font-bold">{wholesaler.name}</h1><p className="font-mono text-xs text-stone-500 mt-1">{wholesaler.wholesalerCode}</p></div><span className="text-[10px] font-bold text-emerald-700">{wholesaler.status}</span></div><div className="grid sm:grid-cols-2 gap-3 mt-5 text-xs"><p><span className="block text-stone-500">Company</span>{wholesaler.companyName || '-'}</p><p><span className="block text-stone-500">Phone</span>{wholesaler.phone || '-'}</p><p><span className="block text-stone-500">Address</span>{wholesaler.address || '-'}</p><p><span className="block text-stone-500">Outstanding receivable</span><strong>₹{sales.reduce((sum, sale) => sum + sale.amountDue, 0).toLocaleString('en-IN')}</strong></p></div></section><section className="bg-white border border-stone-200 rounded-2xl overflow-hidden"><h2 className="p-4 font-bold text-sm border-b border-stone-100">Sales History</h2>{sales.length ? sales.map((sale) => <div key={sale.transaction.id} className="p-4 border-b border-stone-100 flex justify-between text-xs"><span>{sale.transaction.transactionNumber}<br /><span className="text-stone-500">{sale.quantity} kg · {sale.transaction.paymentStatus}</span></span><strong>₹{sale.saleValue.toLocaleString('en-IN')}</strong></div>) : <p className="p-4 text-xs text-stone-500">No sales recorded.</p>}</section></div>;
+
+  return <div className="space-y-4 font-sans pb-10 max-w-3xl mx-auto"><div className="flex items-center justify-between"><button type="button" onClick={() => onNavigate('/app/more')} className="text-xs font-semibold text-stone-600 flex items-center gap-1.5"><ArrowLeft className="w-4 h-4" /> Back</button>{canCreate && <Button size="sm" variant="primary" onClick={() => setShowForm(true)} leftIcon={<Plus className="w-4 h-4" />}>Add Wholesaler</Button>}</div><div><h1 className="text-xl font-bold">Wholesalers</h1><p className="text-xs text-stone-500 mt-1">Manage active rice buyers and their sales history.</p></div>{message && <div className="flex justify-between rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900"><span className="flex gap-2"><CheckCircle2 className="w-4 h-4" />{message}</span><button type="button" onClick={() => setMessage(null)}><X className="w-4 h-4" /></button></div>}<div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-2"><Search className="w-4 h-4 text-stone-400" /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Search name, company, phone, code" className="w-full text-xs outline-none" /></div><div className="space-y-2">{wholesalers.map((item) => <button key={item.id} type="button" onClick={() => onNavigate(`/app/wholesalers/${item.id}`)} className="w-full text-left bg-white border border-stone-200 rounded-xl p-4 flex justify-between gap-3 hover:border-emerald-400"><div><p className="font-bold text-sm">{item.name}</p><p className="font-mono text-[10px] text-stone-500 mt-1">{item.wholesalerCode}</p><p className="text-xs text-stone-500 mt-1">{item.companyName || 'No company'} {item.phone ? `· ${item.phone}` : ''}</p></div><span className="text-[10px] font-bold text-emerald-700">{item.status}</span></button>)}</div>{showForm && <div className="fixed inset-0 z-50 bg-stone-950/30 p-4 flex items-center justify-center"><div className="bg-white rounded-2xl p-5 w-full max-w-md space-y-3"><div className="flex justify-between"><h2 className="font-bold">Add Wholesaler</h2><button type="button" onClick={() => setShowForm(false)}><X className="w-5 h-5" /></button></div>{[['Name *', name, setName], ['Company Name', company, setCompany], ['Phone', phone, setPhone], ['Address', address, setAddress]].map(([label, value, setter]) => <label key={label as string} className="block text-xs font-semibold">{label as string}<input value={value as string} onChange={(event) => (setter as React.Dispatch<React.SetStateAction<string>>)(event.target.value)} className="mt-1 w-full rounded-lg border border-stone-200 p-2.5" /></label>)}<div className="flex gap-2 pt-2"><Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>Cancel</Button><Button variant="primary" className="flex-1" onClick={save}>Save Wholesaler</Button></div></div></div>}</div>;
+};

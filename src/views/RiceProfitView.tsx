@@ -1,0 +1,22 @@
+import React, { useMemo } from 'react';
+import { ArrowLeft, BarChart3, Layers, TrendingDown, TrendingUp } from 'lucide-react';
+import { Button } from '../components/ui/Button';
+import { RiceProfitService } from '../services/rice-profit.service';
+import { dbRepository } from '../db/in-memory-db';
+
+export interface RiceProfitViewProps { saleId: string; onNavigate: (path: string) => void; }
+const money = (value: number) => `₹${value.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const kg = (value: number) => `${value.toLocaleString('en-IN', { maximumFractionDigits: 3 })} kg`;
+
+export const RiceProfitView: React.FC<RiceProfitViewProps> = ({ saleId, onNavigate }) => {
+  const sale = dbRepository.getTransactionById(saleId);
+  const profit = useMemo(() => {
+    if (!sale) return undefined;
+    return sale.profitSnapshot && sale.status !== 'CORRECTED' ? { ...sale.profitSnapshot, status: sale.profitSnapshot.grossProfit >= 0 ? 'PROFIT' as const : 'LOSS' as const } : RiceProfitService.calculateSaleCOGS(sale.id);
+  }, [sale]);
+  if (!sale || !profit) return <div className="p-8 text-center text-sm text-stone-600">Profit detail not found.</div>;
+  const isProfit = profit.grossProfit >= 0;
+  return <div className="space-y-4 font-sans pb-10 max-w-2xl mx-auto"><button type="button" onClick={() => onNavigate(`/app/transactions/${sale.id}`)} className="text-xs font-semibold text-stone-600 flex items-center gap-1.5"><ArrowLeft className="w-4 h-4" /> Sale details</button><div className="bg-white border border-stone-200 rounded-2xl p-5 space-y-5"><div className="flex items-start justify-between gap-3"><div><p className="text-[10px] uppercase tracking-wider text-stone-500">Wholesale sale</p><h1 className="text-xl font-bold">{sale.wholesalerName || 'Wholesaler'}</h1><p className="font-mono text-xs text-stone-500 mt-1">{sale.transactionNumber}</p></div><div className={`flex items-center gap-1 text-xs font-bold ${isProfit ? 'text-emerald-700' : 'text-rose-700'}`}>{isProfit ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}{profit.status}</div></div><div className="grid grid-cols-2 gap-3 text-sm"><Metric label="Sale quantity" value={kg(profit.saleQuantity)} /><Metric label="Selling rate" value={`${money(profit.sellingRate)}/kg`} /><Metric label="Revenue" value={money(profit.revenue)} /><Metric label="Cost of rice sold (COGS)" value={money(profit.cogs)} /></div><div className={`rounded-xl p-4 ${isProfit ? 'bg-emerald-50 border border-emerald-200' : 'bg-rose-50 border border-rose-200'}`}><div className="flex justify-between text-sm"><span>Gross {isProfit ? 'Profit' : 'Loss'}</span><strong>{money(Math.abs(profit.grossProfit))}</strong></div><div className="flex justify-between text-xs mt-2"><span>Profit per kg</span><strong>{money(profit.profitPerKg)}</strong></div><div className="flex justify-between text-xs mt-1"><span>Gross margin</span><strong>{profit.grossMargin.toFixed(2)}%</strong></div></div><div className="border-t border-stone-100 pt-4"><h2 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-stone-500 mb-3"><Layers className="w-4 h-4" /> Cost breakdown · {profit.costingMethod.replace('_', ' ')}</h2><div className="space-y-2">{profit.breakdown.map((line, index) => <div key={`${line.label}-${index}`} className="flex justify-between gap-3 text-xs"><span>{line.label}<span className="block text-stone-400">{kg(line.quantity)} × {money(line.rate)}</span></span><strong>{money(line.cost)}</strong></div>)}</div><div className="border-t border-stone-200 mt-3 pt-3 flex justify-between text-sm font-bold"><span>Total cost of rice sold</span><span>{money(profit.cogs)}</span></div></div></div><div className="bg-stone-50 rounded-xl p-4 text-xs text-stone-600"><BarChart3 className="w-4 h-4 inline mr-1 text-emerald-700" /> Profit is based on the finalized sale snapshot and is independent of cash received.</div></div>;
+};
+
+const Metric = ({ label, value }: { label: string; value: string }) => <div className="bg-stone-50 rounded-lg p-3"><span className="block text-[10px] text-stone-500">{label}</span><strong className="block mt-1 text-stone-950">{value}</strong></div>;

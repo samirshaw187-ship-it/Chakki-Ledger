@@ -1,0 +1,510 @@
+// Chakki Ledger - Prisma Database Schema
+// Database target: PostgreSQL
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// -------------------------------------------------------------
+// ENUMS
+// -------------------------------------------------------------
+
+enum UserRole {
+  OWNER
+  STAFF
+  ACCOUNTANT
+}
+
+enum TransactionType {
+  WHEAT_DEPOSIT           // Customer deposits raw wheat for milling
+  WHEAT_ATTA_EXCHANGE     // Customer takes atta in exchange for deposited wheat (service fee charged)
+  WHEAT_CASH_SETTLEMENT   // Customer sells wheat to shop for cash/credit
+  RICE_PURCHASE           // Shop buys ration rice from customer
+  RICE_ATTA_SETTLEMENT    // Customer uses rice credit to offset atta purchase
+  RICE_CASH_SETTLEMENT    // Customer sells rice and receives cash
+  ATTA_PURCHASE           // Direct retail sale of atta (without wheat deposit)
+  CASH_PAYMENT            // Customer makes cash payment towards credit balance
+  CUSTOMER_CREDIT         // Shop extends credit (money owed by customer)
+  CUSTOMER_DEBIT          // Shop owes customer or gives advance
+  CORRECTION              // Non-destructive adjustment of an erroneous transaction
+  REVERSAL                // Full reversal of a voided transaction
+  RICE_WHOLESALE_SALE     // Shop sells accumulated rice to wholesaler
+  EXPENSE                 // Operational expense (electricity, maintenance, labor)
+}
+
+enum TransactionStatus {
+  DRAFT
+  CONFIRMED
+  COMPLETED
+  PARTIAL
+  PAID
+  CREDIT
+  DUE
+  SETTLED
+  CORRECTED
+  REVERSED
+  CANCELLED
+}
+
+enum ItemType {
+  WHEAT
+  RICE
+  ATTA
+  CASH
+  EXPENSE
+}
+
+enum ItemDirection {
+  IN
+  OUT
+}
+
+enum AttaType {
+  CHALI_ATTA   // Coarse flour (standard sieving)
+  ROLL_ATTA    // Fine roll-milled flour
+}
+
+enum GrainUnit {
+  KG
+  QUINTAL
+}
+
+enum PaymentMode {
+  CASH
+  UPI
+  BANK_TRANSFER
+  CREDIT_OFFSET
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  CORRECTION
+  REVERSAL
+  STATUS_CHANGE
+  EXPORT
+  LOGIN
+  LOGOUT
+  USER_UPDATE
+  TRANSACTION_CREATED
+  TRANSACTION_CORRECTED
+  TRANSACTION_REVERSED
+  CORRECTION_COMPENSATING_CREATED
+  REVERSAL_COMPENSATING_CREATED
+  PAYMENT_CREATED
+  PAYMENT_UPDATED
+  RATE_OVERRIDE_USED
+  CUSTOMER_CREATED
+  CUSTOMER_UPDATED
+  CUSTOMER_STATUS_CHANGED
+}
+
+enum GrainType {
+  WHEAT
+  RATION_RICE
+  CHALI_ATTA
+  ROLL_ATTA
+  BRAN // Choker
+}
+
+// -------------------------------------------------------------
+// CORE USERS & AUTHENTICATION
+// -------------------------------------------------------------
+
+model User {
+  id            String       @id @default(uuid())
+  phone         String       @unique
+  name          String
+  role          UserRole     @default(STAFF)
+  pinHash       String?      // Quick 4-digit PIN hash for mobile shop environment
+  passwordHash  String?
+  isActive      Boolean      @default(true)
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  // Relationships
+  transactionsCreated Transaction[]  @relation("TransactionCreator")
+  transactionsUpdated Transaction[]  @relation("TransactionUpdater")
+  paymentsCreated     Payment[]      @relation("PaymentCreator")
+  auditLogs           AuditLog[]     @relation("AuditUser")
+  dailyClosings       DailyClosing[] @relation("ClosingUser")
+  expensesRecorded    Expense[]      @relation("ExpenseRecorder")
+
+  @@map("users")
+}
+
+// -------------------------------------------------------------
+// CUSTOMER & BALANCES
+// -------------------------------------------------------------
+
+model Customer {
+  id              String           @id @default(uuid())
+  name            String
+  phone           String?          @unique
+  villageOrArea   String?
+  notes           String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  // Denormalized/cached snapshot for fast mobile lookup; derived from Transaction source of truth
+  balance         CustomerBalance?
+
+  // Ledger history
+  transactions    Transaction[]
+  payments        Payment[]
+  wheatLedger     WheatLedger[]
+  attaLedger      AttaLedger[]
+  riceLedger      RiceLedger[]
+
+  @@map("customers")
+}
+
+model CustomerBalance {
+  id                   String   @id @default(uuid())
+  customerId           String   @unique
+  customer             Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  
+  // Financial balance: > 0 means customer owes shop (credit), < 0 means shop owes customer (advance)
+  currentDueAmount     Decimal  @default(0.00) @db.Decimal(12, 2)
+  
+  // Physical grain balances held at chakki (kg)
+  wheatBalanceKg       Decimal  @default(0.000) @db.Decimal(10, 3)
+  riceCreditAmount     Decimal  @default(0.00) @db.Decimal(12, 2)
+  
+  lastTransactionAt    DateTime?
+  updatedAt            DateTime @updatedAt
+
+  @@map("customer_balances")
+}
+
+// -------------------------------------------------------------
+// TRANSACTIONS: THE CENTRAL SOURCE OF TRUTH
+// -------------------------------------------------------------
+
+model Transaction {
+  id                String            @id @default(uuid())
+  transactionNumber String            @unique // Human readable: e.g. "TXN-2026-0001"
+  type              TransactionType
+  status            TransactionStatus @default(COMPLETED)
+  date              DateTime          @default(now())
+
+  customerId        String?
+  customer          Customer?         @relation(fields: [customerId], references: [id])
+
+  // Applied financial values (HISTORICALLY LOCKED at transaction time)
+  grossAmount       Decimal           @default(0.00) @db.Decimal(12, 2)
+  discountAmount    Decimal           @default(0.00) @db.Decimal(12, 2)
+  netAmount         Decimal           @default(0.00) @db.Decimal(12, 2)
+  paidAmount        Decimal           @default(0.00) @db.Decimal(12, 2)
+  balanceDelta      Decimal           @default(0.00) @db.Decimal(12, 2) // Change applied to customer dues
+
+  // Settlement direction: e.g., CUSTOMER_PAYS, SHOP_PAYS, or SETTLED
+  settlementDirection String?
+
+  notes             String?
+
+  // Non-destructive audit linkage
+  isCorrectionOfId  String?
+  isCorrectionOf    Transaction?      @relation("TransactionCorrections", fields: [isCorrectionOfId], references: [id])
+  corrections       Transaction[]     @relation("TransactionCorrections")
+  correctionReason  String?
+  correctionCount   Int               @default(0)
+  correctedById     String?
+  correctedAt       DateTime?
+  reversalReason    String?
+  reversalTxnId     String?
+  reversalDate      DateTime?
+  reversedById      String?
+  netCorrectionDiff String?
+
+  // Creator & modifier audit
+  createdById       String
+  createdBy         User              @relation("TransactionCreator", fields: [createdById], references: [id])
+  updatedById       String?
+  updatedBy         User?             @relation("TransactionUpdater", fields: [updatedById], references: [id])
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  // Children line items & ledgers
+  items             TransactionItem[]
+  payments          Payment[]
+  wheatLedgers      WheatLedger[]
+  attaLedgers       AttaLedger[]
+  riceLedgers       RiceLedger[]
+  ricePurchase      RicePurchase?
+  riceSale          RiceSale?
+
+  @@index([date])
+  @@index([customerId])
+  @@index([type])
+  @@map("transactions")
+}
+
+model TransactionItem {
+  id             String         @id @default(uuid())
+  transactionId  String
+  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  itemType       ItemType       @default(WHEAT)
+  direction      ItemDirection  @default(IN)
+  grainType      GrainType?
+  attaType       AttaType?      // When grainType is CHALI_ATTA or ROLL_ATTA
+  
+  // Historical quantities and rates applied
+  quantity       Decimal        @db.Decimal(10, 3)
+  unit           GrainUnit      @default(KG)
+  ratePerUnit    Decimal        @db.Decimal(10, 2) // Exact rate locked at time of txn (e.g. ₹8/kg or ₹10/kg)
+  totalAmount    Decimal        @db.Decimal(12, 2) // quantity * ratePerUnit
+
+  notes          String?
+  metadata       Json?
+  createdAt      DateTime       @default(now())
+
+  @@map("transaction_items")
+}
+
+// -------------------------------------------------------------
+// PAYMENTS
+// -------------------------------------------------------------
+
+model Payment {
+  id            String       @id @default(uuid())
+  receiptNumber String       @unique // e.g. "RCT-2026-0001"
+  date          DateTime     @default(now())
+
+  customerId    String?
+  customer      Customer?    @relation(fields: [customerId], references: [id])
+
+  transactionId String?
+  transaction   Transaction? @relation(fields: [transactionId], references: [id])
+
+  amount        Decimal      @db.Decimal(12, 2)
+  mode          PaymentMode  @default(CASH)
+  referenceNo   String?      // UPI reference, cheque number, etc.
+  notes         String?
+
+  createdById   String
+  createdBy     User         @relation("PaymentCreator", fields: [createdById], references: [id])
+
+  createdAt     DateTime     @default(now())
+
+  @@index([date])
+  @@index([customerId])
+  @@map("payments")
+}
+
+// -------------------------------------------------------------
+// GRAIN LEDGERS (QUANTITY-BASED RUNNING HISTORIES)
+// -------------------------------------------------------------
+
+model WheatLedger {
+  id            String      @id @default(uuid())
+  date          DateTime    @default(now())
+  customerId    String
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  // Inflow (deposit) or Outflow (milled/withdrawn)
+  inQuantityKg  Decimal     @default(0.000) @db.Decimal(10, 3)
+  outQuantityKg Decimal     @default(0.000) @db.Decimal(10, 3)
+  balanceKg     Decimal     @db.Decimal(10, 3) // Running wheat balance after this transaction
+
+  notes         String?
+
+  @@index([customerId, date])
+  @@map("wheat_ledger")
+}
+
+model AttaLedger {
+  id            String      @id @default(uuid())
+  date          DateTime    @default(now())
+  customerId    String
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  attaType      AttaType
+  quantityKg    Decimal     @db.Decimal(10, 3)
+  appliedRate   Decimal     @db.Decimal(10, 2) // Historic rate charged (e.g. ₹8 or ₹10 or ₹40)
+  totalAmount   Decimal     @db.Decimal(12, 2)
+
+  notes         String?
+
+  @@index([customerId, date])
+  @@map("atta_ledger")
+}
+
+model RiceLedger {
+  id            String      @id @default(uuid())
+  date          DateTime    @default(now())
+  customerId    String
+  customer      Customer    @relation(fields: [customerId], references: [id])
+  transactionId String
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+
+  // Purchased from customer (credit to customer) or offset against atta purchase
+  quantityKg    Decimal     @db.Decimal(10, 3)
+  purchaseRate  Decimal     @db.Decimal(10, 2) // e.g. ₹21/kg locked
+  totalValue    Decimal     @db.Decimal(12, 2)
+  isOffsetAgainstAtta Boolean @default(false)
+
+  notes         String?
+
+  @@index([customerId, date])
+  @@map("rice_ledger")
+}
+
+// -------------------------------------------------------------
+// WHOLESALE & RICE TRADING
+// -------------------------------------------------------------
+
+model Wholesaler {
+  id            String     @id @default(uuid())
+  name          String
+  companyName   String?
+  phone         String?
+  address       String?
+  isActive      Boolean    @default(true)
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+
+  riceSales     RiceSale[]
+
+  @@map("wholesalers")
+}
+
+model RicePurchase {
+  id            String      @id @default(uuid())
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  quantityKg    Decimal     @db.Decimal(10, 3)
+  ratePerKg     Decimal     @db.Decimal(10, 2)
+  totalAmount   Decimal     @db.Decimal(12, 2)
+  createdAt     DateTime    @default(now())
+
+  @@map("rice_purchases")
+}
+
+model RiceSale {
+  id            String      @id @default(uuid())
+  transactionId String      @unique
+  transaction   Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  wholesalerId  String
+  wholesaler    Wholesaler  @relation(fields: [wholesalerId], references: [id])
+
+  quantityKg    Decimal     @db.Decimal(10, 3)
+  ratePerKg     Decimal     @db.Decimal(10, 2)
+  totalAmount   Decimal     @db.Decimal(12, 2)
+  vehicleNumber String?
+  invoiceNumber String?
+  paymentStatus String      @default("PENDING") // PENDING, PARTIAL, RECEIVED
+
+  createdAt     DateTime    @default(now())
+
+  @@map("rice_sales")
+}
+
+// -------------------------------------------------------------
+// EXPENSES
+// -------------------------------------------------------------
+
+model Expense {
+  id          String      @id @default(uuid())
+  date        DateTime    @default(now())
+  category    String      // Electricity, Diesel, Grinding Stone, Labor, Maintenance, Other
+  amount      Decimal     @db.Decimal(12, 2)
+  paidTo      String?
+  paymentMode PaymentMode @default(CASH)
+  notes       String?
+
+  recordedById String
+  recordedBy   User       @relation("ExpenseRecorder", fields: [recordedById], references: [id])
+
+  createdAt   DateTime    @default(now())
+
+  @@index([date])
+  @@map("expenses")
+}
+
+// -------------------------------------------------------------
+// DAILY CLOSING
+// -------------------------------------------------------------
+
+model DailyClosing {
+  id               String   @id @default(uuid())
+  closingDate      DateTime @unique @db.Date
+
+  openingCash      Decimal  @default(0.00) @db.Decimal(12, 2)
+  totalCashIn      Decimal  @default(0.00) @db.Decimal(12, 2)
+  totalCashOut     Decimal  @default(0.00) @db.Decimal(12, 2)
+  expectedCash     Decimal  @default(0.00) @db.Decimal(12, 2)
+  actualCashInHand Decimal  @default(0.00) @db.Decimal(12, 2)
+  cashDiscrepancy  Decimal  @default(0.00) @db.Decimal(12, 2)
+
+  totalWheatMilledKg Decimal @default(0.000) @db.Decimal(10, 3)
+  totalRiceBoughtKg  Decimal @default(0.000) @db.Decimal(10, 3)
+  totalAttaSoldKg    Decimal @default(0.000) @db.Decimal(10, 3)
+
+  notes            String?
+  closedById       String
+  closedBy         User     @relation("ClosingUser", fields: [closedById], references: [id])
+
+  closedAt         DateTime @default(now())
+
+  @@map("daily_closings")
+}
+
+// -------------------------------------------------------------
+// CONFIGURABLE RATE CONFIGURATION (WITH EFFECTIVE DATES)
+// -------------------------------------------------------------
+
+model RateConfiguration {
+  id                    String    @id @default(uuid())
+  effectiveFrom         DateTime  @default(now())
+  effectiveTo           DateTime?
+
+  chaliAttaExchangeRate Decimal   @default(8.00) @db.Decimal(10, 2)  // ₹8 per kg milling/exchange
+  rollAttaExchangeRate  Decimal   @default(10.00) @db.Decimal(10, 2) // ₹10 per kg milling/exchange
+  rollAttaSellingRate   Decimal   @default(40.00) @db.Decimal(10, 2) // ₹40 per kg retail sale
+  ricePurchaseRate      Decimal   @default(21.00) @db.Decimal(10, 2) // ₹21 per kg buy rate for ration rice
+
+  isActive              Boolean   @default(true)
+  createdReason         String?
+  createdAt             DateTime  @default(now())
+
+  @@map("rate_configurations")
+}
+
+// -------------------------------------------------------------
+// AUDIT LOG (PERMANENT AUDIT TRAIL FOR DISPUTE RESOLUTION)
+// -------------------------------------------------------------
+
+model AuditLog {
+  id             String      @id @default(uuid())
+  action         AuditAction
+  entityType     String      // "TRANSACTION", "PAYMENT", "CUSTOMER", "RATE_CONFIG"
+  entityId       String
+  
+  performedById  String
+  performedBy    User        @relation("AuditUser", fields: [performedById], references: [id])
+
+  reason         String?
+  previousState  Json?       // JSON snapshot prior to alteration
+  newState       Json?       // JSON snapshot after alteration
+
+  timestamp      DateTime    @default(now())
+  ipAddress      String?
+  userAgent      String?
+
+  @@index([entityType, entityId])
+  @@index([timestamp])
+  @@map("audit_logs")
+}
