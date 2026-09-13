@@ -525,7 +525,7 @@ export class PaymentService {
       const q = filters.search.toLowerCase().trim();
       list = list.filter(
         (p) =>
-          p.receiptNumber.toLowerCase().includes(q) ||
+          p.receiptNumber?.toLowerCase().includes(q) ||
           p.customerName?.toLowerCase().includes(q) ||
           p.customerCode?.toLowerCase().includes(q) ||
           p.notes?.toLowerCase().includes(q)

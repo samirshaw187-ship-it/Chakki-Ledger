@@ -877,7 +877,7 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
           throw new Error('Please select a customer for Rice → Cash Settlement.');
         }
 
-        const result = GrainCashSettlementService.executeGrainCashSettlement(
+        const result = await GrainCashSettlementService.executeGrainCashSettlement(
           selectedCustomer.id,
           rcSettlementCalc,
           actor,
@@ -896,7 +896,7 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
           throw new Error('Please select a customer for Wheat → Cash Settlement.');
         }
 
-        const result = GrainCashSettlementService.executeGrainCashSettlement(
+        const result = await GrainCashSettlementService.executeGrainCashSettlement(
           selectedCustomer.id,
           wcSettlementCalc,
           actor,
@@ -3149,25 +3149,27 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
                 Official Transaction Number
               </span>
               <div className="text-lg sm:text-xl font-mono font-bold text-stone-900 tracking-wider">
-                {createdResult.transaction.transactionNumber}
+                {createdResult?.transaction?.transactionNumber || 'TXN-RECORDED'}
               </div>
               <p className="text-xs font-semibold text-emerald-800">
-                {createdResult.summaryText}
+                {createdResult?.summaryText}
               </p>
             </div>
 
             {/* Action Buttons */}
             <div className="pt-3 flex flex-col sm:flex-row gap-2.5 justify-center">
-              <Button
-                variant="primary"
-                size="md"
-                onClick={() => onNavigate(`/app/transactions/${createdResult.transaction.id}`)}
-                className="w-full sm:w-auto"
-              >
-                View Transaction
-              </Button>
+              {createdResult?.transaction?.id && (
+                <Button
+                  variant="primary"
+                  size="md"
+                  onClick={() => onNavigate(`/app/transactions/${createdResult.transaction.id}`)}
+                  className="w-full sm:w-auto"
+                >
+                  View Transaction
+                </Button>
+              )}
 
-              {createdResult.transaction.customerId && (
+              {createdResult?.transaction?.customerId && (
                 <Button
                   variant="outline"
                   size="md"

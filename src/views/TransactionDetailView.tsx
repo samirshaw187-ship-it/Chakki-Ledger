@@ -209,7 +209,7 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
 
       setTxn({ ...res.original });
       setActionSuccess(
-        `Correction recorded successfully! Original transaction marked as CORRECTED. Compensating entry ${res.correctionTxn.transactionNumber} created and ledger balances updated atomically.`
+        `Correction recorded successfully! Original transaction marked as CORRECTED. Compensating entry ${res.correctionTxn?.transactionNumber || 'adjustment'} created and ledger balances updated atomically.`
       );
       setIsCorrectionModalOpen(false);
       setCorrectionReason('');
@@ -243,7 +243,7 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
 
       setTxn({ ...res.original });
       setActionSuccess(
-        `Transaction ${txn.transactionNumber} safely reversed! Compensating reversal ${res.reversalTxn.transactionNumber} created and opposite ledger entries posted.`
+        `Transaction ${txn?.transactionNumber || ''} safely reversed! Compensating reversal ${res.reversalTxn?.transactionNumber || 'entry'} created and opposite ledger entries posted.`
       );
       setIsReversalModalOpen(false);
       setReversalReason('');
@@ -432,7 +432,7 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
                     onClick={() => onNavigate(`/app/transactions/${ct.id}`)}
                     className="px-2.5 py-1 bg-amber-200/90 hover:bg-amber-300 text-amber-950 rounded-lg font-mono font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
                   >
-                    <span>{ct.transactionNumber}</span>
+                    <span>{ct?.transactionNumber || 'TXN'}</span>
                     <ExternalLink className="w-3 h-3" />
                   </button>
                 ))}
@@ -482,7 +482,7 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
                     onClick={() => onNavigate(`/app/transactions/${ct.id}`)}
                     className="px-2.5 py-1 bg-rose-200/90 hover:bg-rose-300 text-rose-950 rounded-lg font-mono font-bold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
                   >
-                    <span>{ct.transactionNumber}</span>
+                    <span>{ct?.transactionNumber || 'TXN'}</span>
                     <ExternalLink className="w-3 h-3" />
                   </button>
                 ))}
@@ -498,7 +498,7 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
               <Info className="w-4 h-4 text-stone-500 shrink-0" />
               <div>
                 <span className="font-bold text-stone-900 block">
-                  Compensating Entry for {originalTransaction.transactionNumber}
+                  Compensating Entry for {originalTransaction?.transactionNumber || 'Original Transaction'}
                 </span>
                 <span className="text-[11px] text-stone-500">
                   Created non-destructively to adjust financial ledger balances and prevent disputes.
