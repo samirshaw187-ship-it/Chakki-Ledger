@@ -294,6 +294,18 @@ export class RiceAttaSettlementService {
         paymentStatus = SettlementPaymentStatus.PAID;
         effectivePaidAmount = settlementAmount;
         customerBalanceDelta = 0; // Handed cash immediately, balance settled
+      } else if (paymentOption === 'PARTIAL') {
+        const cash = roundCurrency(input.cashPaidAmount || 0);
+        if (cash < 0 || cash > settlementAmount) {
+          throw new Error(`Cash paid must be between ₹0 and ${formatRupees(settlementAmount)}.`);
+        }
+        effectivePaidAmount = cash;
+        customerBalanceDelta = safeSubtract(settlementAmount, cash) * -1;
+        paymentStatus = cash >= settlementAmount
+          ? SettlementPaymentStatus.PAID
+          : cash > 0
+          ? SettlementPaymentStatus.PARTIAL
+          : SettlementPaymentStatus.PENDING;
       } else {
         paymentStatus = SettlementPaymentStatus.PENDING;
         effectivePaidAmount = 0;

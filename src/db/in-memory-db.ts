@@ -298,6 +298,13 @@ class InMemoryDatabase {
     return newPayment;
   }
 
+  public updatePayment(id: string, updates: Partial<Payment>): Payment | undefined {
+    const index = this.payments.findIndex((payment) => payment.id === id || payment.receiptNumber === id);
+    if (index === -1) return undefined;
+    this.payments[index] = { ...this.payments[index], ...updates };
+    return this.payments[index];
+  }
+
   // WHOLESALERS
   public getWholesalers(): Wholesaler[] {
     return [...this.wholesalers];

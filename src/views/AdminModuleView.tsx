@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -11,6 +11,8 @@ import { ShieldCheck, HardDriveDownload, Download, Plus, CheckCircle2 } from 'lu
 import { UserManagementView } from './UserManagementView';
 import { AdminCustomersView } from './AdminCustomersView';
 import { AdminAuditLogsView } from './admin/AdminAuditLogsView';
+import { SettingsService, RateFieldName } from '../services/settings.service';
+import { useAuth } from '../modules/auth/AuthContext';
 
 export interface AdminModuleViewProps {
   modulePath: string;
@@ -18,7 +20,11 @@ export interface AdminModuleViewProps {
 }
 
 export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, onNavigate }) => {
-  const currentRates = RateService.getCurrentRates();
+  const { user } = useAuth();
+  const [currentRates, setCurrentRates] = useState(() => RateService.getCurrentRates());
+  const [editingRate, setEditingRate] = useState<RateFieldName | null>(null);
+  const [editValue, setEditValue] = useState('');
+  const [rateMessage, setRateMessage] = useState<string | null>(null);
   const customers = dbRepository.getCustomers();
   const transactions = dbRepository.getTransactions();
   const wholesalers = dbRepository.getWholesalers();
@@ -79,6 +85,29 @@ export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, on
 
   // SETTINGS & RATE CONFIGURATION
   if (modulePath === '/admin/settings') {
+    const editableRates: Array<{ field: RateFieldName; label: string; description: string }> = [
+      { field: 'chaliAttaExchangeRate', label: 'Chali Atta Exchange Rate', description: 'Standard coarse flour exchange rate' },
+      { field: 'rollAttaExchangeRate', label: 'Roll Atta Exchange Rate', description: 'Fine roll-milled flour exchange rate' },
+      { field: 'chaliAttaSellingRate', label: 'Chali Atta Selling Rate', description: 'Direct chali atta selling rate' },
+      { field: 'rollAttaSellingRate', label: 'Roll Atta Selling Rate', description: 'Direct roll atta selling rate' },
+      { field: 'ricePurchaseRate', label: 'Rice Purchase Rate', description: 'Standard rice purchase rate' },
+      { field: 'riceCashPurchaseRate', label: 'Rice Cash Purchase Rate', description: 'Rice cash settlement rate' },
+      { field: 'wheatCashPurchaseRate', label: 'Wheat Cash Purchase Rate', description: 'Wheat cash settlement rate' },
+    ];
+
+    const saveRate = (field: RateFieldName) => {
+      try {
+        if (!user) throw new Error('Please sign in again before changing rates.');
+        const value = Number(editValue);
+        SettingsService.updateRate(field, value, user, `Updated ${field}`);
+        setCurrentRates(SettingsService.getActiveRates());
+        setEditingRate(null);
+        setRateMessage('Rate updated. New transactions will use the new value; existing transactions retain their applied rate.');
+      } catch (error: any) {
+        setRateMessage(error.message || 'Unable to update rate.');
+      }
+    };
+
     return (
       <div className="space-y-6">
         <PageHeader
@@ -89,34 +118,31 @@ export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, on
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card title="Current Active Rates">
             <div className="space-y-3 text-sm">
-              <div className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
-                <div>
-                  <p className="font-semibold text-stone-900">Chali Atta Milling Rate</p>
-                  <p className="text-xs text-stone-500">Standard coarse flour exchange rate</p>
-                </div>
-                <span className="font-mono font-bold text-base text-stone-900">₹{(currentRates.chaliAttaExchangeRate ?? 0).toFixed(2)} / kg</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
-                <div>
-                  <p className="font-semibold text-stone-900">Roll Atta Milling Rate</p>
-                  <p className="text-xs text-stone-500">Fine roll-milled flour exchange rate</p>
-                </div>
-                <span className="font-mono font-bold text-base text-stone-900">₹{(currentRates.rollAttaExchangeRate ?? 0).toFixed(2)} / kg</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
-                <div>
-                  <p className="font-semibold text-stone-900">Roll Atta Retail Selling Rate</p>
-                  <p className="text-xs text-stone-500">Direct cash purchase of ready roll atta</p>
-                </div>
-                <span className="font-mono font-bold text-base text-stone-900">₹{(currentRates.rollAttaSellingRate ?? 0).toFixed(2)} / kg</span>
-              </div>
-              <div className="flex items-center justify-between p-3 bg-stone-50 rounded-lg">
-                <div>
-                  <p className="font-semibold text-stone-900">Ration Rice Purchase Rate</p>
-                  <p className="text-xs text-stone-500">Shop purchase rate from customers</p>
-                </div>
-                <span className="font-mono font-bold text-base text-stone-900">₹{(currentRates.ricePurchaseRate ?? 0).toFixed(2)} / kg</span>
-              </div>
+              {rateMessage && <p className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-800">{rateMessage}</p>}
+              {editableRates.map(({ field, label, description }) => {
+                const value = Number(currentRates[field] ?? 0);
+                const isEditing = editingRate === field;
+                return (
+                  <div key={field} className="p-3 bg-stone-50 rounded-lg space-y-2">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold text-stone-900">{label}</p>
+                        <p className="text-xs text-stone-500">{description}</p>
+                      </div>
+                      {!isEditing && <span className="font-mono font-bold text-base text-stone-900">₹{value.toFixed(2)} / kg</span>}
+                    </div>
+                    {isEditing ? (
+                      <div className="flex items-center gap-2">
+                        <input type="number" min="0" step="0.01" value={editValue} onChange={(e) => setEditValue(e.target.value)} className="min-w-0 flex-1 rounded-lg border border-stone-300 bg-white px-3 py-2 font-mono" />
+                        <Button size="sm" onClick={() => saveRate(field)}>Save New Rate</Button>
+                        <Button size="sm" variant="outline" onClick={() => setEditingRate(null)}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <Button size="sm" variant="outline" onClick={() => { setEditingRate(field); setEditValue(String(value)); setRateMessage(null); }}>Edit</Button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </Card>
 

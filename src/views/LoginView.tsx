@@ -2,9 +2,8 @@ import React, { useState } from 'react';
 import { UserRole } from '../types';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { Lock, Smartphone, ShieldCheck, Eye, EyeOff, AlertCircle, CheckCircle2, UserCheck } from 'lucide-react';
-import { AuthService, ROLE_METADATA } from '../modules/auth';
-import { dbRepository } from '../db/in-memory-db';
+import { ShieldCheck, Eye, EyeOff, AlertCircle } from 'lucide-react';
+import { AuthService } from '../modules/auth';
 
 export interface LoginViewProps {
   onLoginSuccess: (role: UserRole) => void;
@@ -16,8 +15,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [showPin, setShowPin] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  const users = dbRepository.getUsers();
 
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,18 +32,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       setErrorMessage(err.message || 'An unexpected error occurred during login.');
     } finally {
       setIsLoading(false);
-    }
-  };
-
-  const handleQuickFill = (userPhone: string, userPin: string, role: UserRole) => {
-    setPhone(userPhone);
-    setPin(userPin);
-    setErrorMessage(null);
-
-    // Instant login for demo convenience
-    const result = AuthService.login(userPhone, userPin);
-    if (result.success && result.session) {
-      onLoginSuccess(result.session.role);
     }
   };
 
@@ -140,45 +125,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
             Sign In to Counter
           </Button>
         </form>
-
-        {/* Quick Demo Test Accounts Section */}
-        <div className="pt-3 border-t border-stone-100 space-y-2.5">
-          <div className="flex items-center justify-between">
-            <span className="text-[11px] font-bold text-stone-500 uppercase tracking-wider">
-              Quick Test Profiles
-            </span>
-            <span className="text-[10px] text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded">
-              1-Tap Enter
-            </span>
-          </div>
-
-          <div className="grid grid-cols-1 gap-2">
-            {users.map((u) => {
-              const meta = ROLE_METADATA[u.role];
-              const demoPin = u.pin || meta.demoPin;
-              return (
-                <button
-                  key={u.id}
-                  type="button"
-                  onClick={() => handleQuickFill(u.phone, demoPin, u.role)}
-                  className="w-full p-2.5 rounded-xl border border-stone-200 hover:border-emerald-600 hover:bg-emerald-50/40 flex items-center justify-between text-left transition-colors cursor-pointer"
-                >
-                  <div className="min-w-0 pr-2">
-                    <p className="text-xs font-bold text-stone-900 truncate">{u.name}</p>
-                    <p className="text-[11px] text-stone-500 font-mono">
-                      +91 {u.phone} • PIN: <span className="font-semibold text-stone-700">{demoPin}</span>
-                    </p>
-                  </div>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-1 rounded-md shrink-0 border ${meta.badgeClass}`}
-                  >
-                    {u.role}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
 
         {/* Security & Audit Assurance */}
         <div className="pt-2 border-t border-stone-100 text-center text-stone-500 text-[11px]">

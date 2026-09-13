@@ -595,6 +595,13 @@ export class PaymentService {
     payment.correctedAt = now;
     payment.correctedById = actor.id;
     payment.correctedByName = actor.name;
+    dbRepository.updatePayment(payment.id, {
+      status: payment.status,
+      correctionReason: payment.correctionReason,
+      correctedAt: payment.correctedAt,
+      correctedById: payment.correctedById,
+      correctedByName: payment.correctedByName,
+    });
 
     // 2. Spawn compensating adjustment payment receipt
     const isIncrease = diff > 0;

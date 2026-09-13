@@ -62,6 +62,7 @@ import {
 import { WheatAttaExchangeService } from '../services/wheat-atta-exchange.service';
 import { RiceAttaSettlementService, RiceAttaSettlementCalculation } from '../services/rice-atta-settlement.service';
 import { GrainCashSettlementService, GrainCashSettlementCalculation } from '../services/grain-cash-settlement.service';
+import { LedgerService } from '../services/ledger.service';
 
 export type NewTxnStep = 'CUSTOMER' | 'TYPE' | 'DETAILS' | 'CONFIRM' | 'SUCCESS';
 
@@ -367,6 +368,11 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
   const [weOverrideReason, setWeOverrideReason] = useState<string>('');
   const [wePaymentOption, setWePaymentOption] = useState<'FULL_CASH' | 'ADD_TO_DUE' | 'PARTIAL'>('FULL_CASH');
   const [wePartialAmount, setWePartialAmount] = useState<number>(0);
+  const availableWheat = useMemo(
+    () => selectedCustomer ? LedgerService.calculateCustomerBalances(selectedCustomer.id).wheatBalanceKg : 0,
+    [selectedCustomer]
+  );
+  const wheatExchangeExceedsBalance = weWheatQty > availableWheat;
 
   // Standard business rate for currently selected atta type
   const weStandardRate = useMemo(() => {
@@ -2329,6 +2335,11 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
 
                 {/* 2. Wheat Quantity Input with Quick Add Buttons */}
                 <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+                  <div className="p-3 bg-amber-100/70 rounded-xl border border-amber-300">
+                    <span className="text-[10px] uppercase tracking-wider font-bold text-amber-900 block">Current Wheat Balance</span>
+                    <span className="text-xl font-mono font-bold text-amber-950">{formatKg(availableWheat)}</span>
+                    <span className="text-[11px] text-amber-900 block mt-0.5">Maximum available for this exchange</span>
+                  </div>
                   <div className="flex items-center justify-between">
                     <label className="text-xs font-bold text-stone-800 uppercase tracking-wider">
                       2. Wheat Quantity Brought In (kg) *
@@ -2345,13 +2356,20 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
                       min="0.1"
                       value={weWheatQty || ''}
                       onChange={(e) => setWeWheatQty(parseFloat(e.target.value) || 0)}
+                      max={availableWheat}
                       placeholder="e.g. 15"
-                      className="w-full pl-3 pr-12 py-2.5 bg-white border border-stone-300 rounded-xl text-base sm:text-lg font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      className={`w-full pl-3 pr-12 py-2.5 bg-white border rounded-xl text-base sm:text-lg font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500 ${wheatExchangeExceedsBalance ? 'border-red-400' : 'border-stone-300'}`}
                     />
                     <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
                       kg
                     </span>
                   </div>
+                  <p className="text-[11px] text-stone-500">Maximum: {formatKg(availableWheat)}</p>
+                  {wheatExchangeExceedsBalance && (
+                    <p className="text-xs font-semibold text-red-700" role="alert">
+                      Customer has only {formatKg(availableWheat)} wheat available.
+                    </p>
+                  )}
 
                   {/* Quick Preset Buttons */}
                   <div className="flex items-center gap-1.5 flex-wrap pt-0.5">

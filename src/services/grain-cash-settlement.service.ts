@@ -452,15 +452,16 @@ export class GrainCashSettlementService {
       });
     }
 
-    // 4. Khata Credit (Remaining unpaid balance owed to customer)
-    if (remaining > 0) {
+    // 4. Record the full payable obligation. The actual cash outflow above
+    // offsets the paid portion, leaving only the unpaid remainder as credit.
+    if (tx.netAmount > 0) {
       entries.push({
         customerId: tx.customerId,
         customerName: name,
         transactionId: tx.id,
         transactionNumber: tx.transactionNumber,
         entryType: LedgerEntryType.CASH,
-        amount: remaining,
+        amount: tx.netAmount,
         unit: LedgerUnit.RUPEE,
         direction: LedgerDirection.IN,
         status: LedgerStatus.CREDIT,

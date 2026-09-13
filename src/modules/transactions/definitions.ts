@@ -298,27 +298,9 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
 
       const entries: Array<Omit<LedgerEntry, 'id' | 'createdAt'>> = [];
 
-      // 1. Wheat Received (Customer Digital Ledger entry)
-      entries.push({
-        customerId: tx.customerId,
-        customerName: customerName || tx.customerName,
-        transactionId: tx.id,
-        transactionNumber: tx.transactionNumber,
-        entryType: LedgerEntryType.WHEAT,
-        quantity: wheatQty,
-        unit: LedgerUnit.KG,
-        rate: appliedRate,
-        amount: 0,
-        direction: LedgerDirection.IN,
-        status: LedgerStatus.SETTLED,
-        description: `Wheat Received (${formatKg(wheatQty)} for ${attaTypeName} exchange @ ₹${appliedRate}/kg)`,
-        date: tx.date,
-        createdById: tx.createdById,
-        createdByName: tx.createdByName,
-        notes: tx.notes,
-      });
-
-      // 2. Atta Given / Exchanged (Customer Digital Ledger entry)
+      // Exchange consumes wheat already deposited by the customer.
+      // Do not add a new wheat inflow here or the balance would never decrease.
+      // 1. Atta Given / Exchanged (Customer Digital Ledger entry)
       entries.push({
         customerId: tx.customerId,
         customerName: customerName || tx.customerName,
@@ -338,7 +320,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
         notes: tx.notes,
       });
 
-      // 3. Wheat Outflow (Accounting offset so grain deposit inventory stays accurate)
+      // 2. Wheat Outflow from the customer's available deposited balance
       entries.push({
         customerId: tx.customerId,
         customerName: customerName || tx.customerName,
@@ -357,7 +339,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
         createdByName: tx.createdByName,
       });
 
-      // 4. Financial Entries
+      // 3. Financial Entries
       if (tx.balanceDelta > 0) {
         entries.push({
           customerId: tx.customerId,
@@ -634,15 +616,33 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
         });
       }
 
-      // Cash settlement balance entry if pending khata balance
-      if (tx.balanceDelta !== 0 && tx.paymentStatus !== 'PAID') {
+      // Physical payment and outstanding balance are separate ledger facts.
+      if (tx.paidAmount > 0) {
         entries.push({
           customerId: tx.customerId,
           customerName: customerName || tx.customerName,
           transactionId: tx.id,
           transactionNumber: tx.transactionNumber,
           entryType: LedgerEntryType.CASH,
-          amount: Math.abs(tx.balanceDelta),
+          amount: tx.paidAmount,
+          unit: LedgerUnit.RUPEE,
+          direction: tx.settlementDirection === 'CUSTOMER_RECEIVES' ? LedgerDirection.OUT : LedgerDirection.IN,
+          status: LedgerStatus.PAID,
+          description: `Settlement Cash ${tx.settlementDirection === 'CUSTOMER_RECEIVES' ? 'Paid to Customer' : 'Received from Customer'} (${formatRupees(tx.paidAmount)})`,
+          date: tx.date,
+          createdById: tx.createdById,
+          createdByName: tx.createdByName,
+        });
+      }
+
+      if (tx.settlementDirection !== 'SETTLED' && tx.netAmount > 0) {
+        entries.push({
+          customerId: tx.customerId,
+          customerName: customerName || tx.customerName,
+          transactionId: tx.id,
+          transactionNumber: tx.transactionNumber,
+          entryType: LedgerEntryType.CASH,
+          amount: tx.netAmount,
           unit: LedgerUnit.RUPEE,
           direction: tx.balanceDelta < 0 ? LedgerDirection.IN : LedgerDirection.OUT,
           status: tx.balanceDelta < 0 ? LedgerStatus.CREDIT : LedgerStatus.DUE,
@@ -651,26 +651,6 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
           createdById: tx.createdById,
           createdByName: tx.createdByName,
         });
-      } else if (tx.paidAmount > 0 || tx.paymentStatus === 'PAID') {
-        // Record completed cash settlement entry
-        const cashAmount = tx.paidAmount > 0 ? tx.paidAmount : tx.netAmount;
-        if (cashAmount > 0) {
-          entries.push({
-            customerId: tx.customerId,
-            customerName: customerName || tx.customerName,
-            transactionId: tx.id,
-            transactionNumber: tx.transactionNumber,
-            entryType: LedgerEntryType.CASH,
-            amount: cashAmount,
-            unit: LedgerUnit.RUPEE,
-            direction: tx.settlementDirection === 'CUSTOMER_RECEIVES' ? LedgerDirection.OUT : LedgerDirection.IN,
-            status: LedgerStatus.SETTLED,
-            description: `Settlement Cash Handed Over (${tx.settlementDirection === 'CUSTOMER_RECEIVES' ? 'Shop paid customer' : 'Customer paid shop'})`,
-            date: tx.date,
-            createdById: tx.createdById,
-            createdByName: tx.createdByName,
-          });
-        }
       }
 
       return entries;

@@ -16,6 +16,7 @@ import { SettlementPaymentStatus, TransactionType, UserRole } from '../types';
 import { dbRepository } from '../db/in-memory-db';
 import { TRANSACTION_DEFINITIONS, TransactionItemInput } from '../modules/transactions/definitions';
 import { roundCurrency, roundQuantity } from '../utils/precision';
+import { LedgerService } from './ledger.service';
 
 export interface CreateTransactionDTO {
   type: TransactionType;
@@ -151,6 +152,16 @@ export class TransactionValidationService {
           field: 'wheatQuantity',
           message: 'Please enter a valid wheat quantity greater than 0.',
         });
+      }
+
+      if (dto.customerId && wheatQty > 0) {
+        const availableWheat = LedgerService.calculateCustomerBalances(dto.customerId).wheatBalanceKg;
+        if (wheatQty > availableWheat) {
+          errors.push({
+            field: 'wheatQuantity',
+            message: `Customer has only ${availableWheat} kg wheat available.`,
+          });
+        }
       }
 
       const appliedRate = attaItem?.ratePerUnit || wheatItem?.ratePerUnit || 0;

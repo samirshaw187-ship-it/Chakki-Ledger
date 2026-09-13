@@ -366,7 +366,7 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({
                 alert('This customer is inactive. Please activate the customer before recording transactions.');
                 return;
               }
-              onNavigate('/app/transactions/new');
+              onNavigate(`/app/transactions/new?customerId=${encodeURIComponent(customer.id)}`);
             }}
             className="flex-1 min-w-[140px]"
           >
