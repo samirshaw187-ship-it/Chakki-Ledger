@@ -23,6 +23,7 @@ type SyncDispatcher = {
   saveAuditLog?: (log: AuditLogEntry) => Promise<void>;
   saveSettings?: () => Promise<void>;
   deleteCustomer?: (id: string) => Promise<void>;
+  deleteLedgerEntry?: (id: string) => Promise<void>;
 };
 
 let dispatcher: SyncDispatcher = {};
@@ -33,6 +34,10 @@ export function registerFirestoreDispatcher(d: SyncDispatcher): void {
 
 export function syncDeleteCustomerFromFirestore(id: string): void {
   dispatcher.deleteCustomer?.(id).catch(() => {});
+}
+
+export function syncDeleteLedgerEntryFromFirestore(id: string): void {
+  dispatcher.deleteLedgerEntry?.(id).catch(() => {});
 }
 
 export function syncUserToFirestore(user: User): void {

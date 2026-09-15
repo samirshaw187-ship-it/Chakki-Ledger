@@ -164,11 +164,16 @@ class InMemoryDatabase {
     }
   }
 
-  public addUser(userData: Omit<User, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): User {
+  public addUser(
+    userData: Omit<User, 'id' | 'createdAt'> & { id?: string; createdAt?: string },
+    syncToRemote: boolean = true
+  ): User {
     const existingIndex = userData.id ? this.users.findIndex((u) => u.id === userData.id) : -1;
     if (existingIndex >= 0) {
       this.users[existingIndex] = { ...this.users[existingIndex], ...userData };
-      syncUserToFirestore(this.users[existingIndex]);
+      if (syncToRemote) {
+        syncUserToFirestore(this.users[existingIndex]);
+      }
       this.notifyChange();
       return this.users[existingIndex];
     }
@@ -178,25 +183,31 @@ class InMemoryDatabase {
       createdAt: userData.createdAt || new Date().toISOString(),
     };
     this.users.push(newUser);
-    syncUserToFirestore(newUser);
+    if (syncToRemote) {
+      syncUserToFirestore(newUser);
+    }
     this.notifyChange();
     return newUser;
   }
 
-  public updateUser(id: string, updates: Partial<User>): User | undefined {
+  public updateUser(id: string, updates: Partial<User>, syncToRemote: boolean = true): User | undefined {
     const index = this.users.findIndex((u) => u.id === id);
     if (index === -1) return undefined;
     this.users[index] = { ...this.users[index], ...updates };
-    syncUserToFirestore(this.users[index]);
+    if (syncToRemote) {
+      syncUserToFirestore(this.users[index]);
+    }
     this.notifyChange();
     return this.users[index];
   }
 
-  public toggleUserStatus(id: string): User | undefined {
+  public toggleUserStatus(id: string, syncToRemote: boolean = true): User | undefined {
     const user = this.users.find((u) => u.id === id);
     if (user) {
       user.isActive = !user.isActive;
-      syncUserToFirestore(user);
+      if (syncToRemote) {
+        syncUserToFirestore(user);
+      }
       this.notifyChange();
     }
     return user;
@@ -239,7 +250,10 @@ class InMemoryDatabase {
     return `CUST-${String(nextSeq).padStart(5, '0')}`;
   }
 
-  public addCustomer(customer: Omit<Customer, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Customer {
+  public addCustomer(
+    customer: Omit<Customer, 'id' | 'createdAt' | 'customerCode'> & { id?: string; customerCode?: string; createdAt?: string },
+    syncToRemote: boolean = true
+  ): Customer {
     const customerCode = customer.customerCode || this.generateNextCustomerCode();
     const existingIndex = customer.id ? this.customers.findIndex((c) => c.id === customer.id) : -1;
     if (existingIndex >= 0) {
@@ -248,7 +262,9 @@ class InMemoryDatabase {
         ...customer,
         updatedAt: customer.updatedAt || new Date().toISOString(),
       };
-      syncCustomerToFirestore(this.customers[existingIndex]);
+      if (syncToRemote) {
+        syncCustomerToFirestore(this.customers[existingIndex]);
+      }
       this.notifyChange();
       return this.customers[existingIndex];
     }
@@ -260,12 +276,14 @@ class InMemoryDatabase {
       updatedAt: customer.updatedAt || new Date().toISOString(),
     };
     this.customers.push(newCustomer);
-    syncCustomerToFirestore(newCustomer);
+    if (syncToRemote) {
+      syncCustomerToFirestore(newCustomer);
+    }
     this.notifyChange();
     return newCustomer;
   }
 
-  public updateCustomer(id: string, updates: Partial<Customer>): Customer | undefined {
+  public updateCustomer(id: string, updates: Partial<Customer>, syncToRemote: boolean = true): Customer | undefined {
     const index = this.customers.findIndex((c) => c.id === id || c.customerCode === id);
     if (index === -1) return undefined;
     this.customers[index] = {
@@ -273,7 +291,9 @@ class InMemoryDatabase {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
-    syncCustomerToFirestore(this.customers[index]);
+    if (syncToRemote) {
+      syncCustomerToFirestore(this.customers[index]);
+    }
     this.notifyChange();
     return this.customers[index];
   }
@@ -312,17 +332,21 @@ class InMemoryDatabase {
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }
 
-  public saveTransaction(txn: Transaction): Transaction {
+  public saveTransaction(txn: Transaction, syncToRemote: boolean = true): Transaction {
     const existingIndex = this.transactions.findIndex((t) => t.id === txn.id);
     if (existingIndex >= 0) {
-      this.transactions[existingIndex] = { ...txn, updatedAt: new Date().toISOString() };
-      syncTransactionToFirestore(this.transactions[existingIndex]);
+      this.transactions[existingIndex] = { ...this.transactions[existingIndex], ...txn, updatedAt: new Date().toISOString() };
+      if (syncToRemote) {
+        syncTransactionToFirestore(this.transactions[existingIndex]);
+      }
       this.notifyChange();
       return this.transactions[existingIndex];
     }
 
     this.transactions.unshift(txn);
-    syncTransactionToFirestore(txn);
+    if (syncToRemote) {
+      syncTransactionToFirestore(txn);
+    }
     this.notifyChange();
     return txn;
   }
@@ -379,10 +403,13 @@ class InMemoryDatabase {
     return [...this.payments];
   }
 
-  public addPayment(pmt: Omit<Payment, 'id' | 'receiptNumber' | 'createdAt'> & { id?: string; createdAt?: string }): Payment {
+  public addPayment(
+    pmt: Omit<Payment, 'id' | 'receiptNumber' | 'createdAt'> & { id?: string; createdAt?: string; receiptNumber?: string },
+    syncToRemote: boolean = true
+  ): Payment {
     const count = this.payments.length + 1;
     const year = new Date().getFullYear();
-    const receiptNumber = `RCT-${year}-${String(count).padStart(4, '0')}`;
+    const receiptNumber = pmt.receiptNumber || `RCT-${year}-${String(count).padStart(4, '0')}`;
 
     const newPayment: Payment = {
       ...pmt,
@@ -399,20 +426,26 @@ class InMemoryDatabase {
       if (customer) {
         const reduction = newPayment.appliedToBillAmount !== undefined ? newPayment.appliedToBillAmount : newPayment.amount;
         customer.currentDueAmount = Math.max(0, (customer.currentDueAmount || 0) - reduction);
-        syncCustomerToFirestore(customer);
+        if (syncToRemote) {
+          syncCustomerToFirestore(customer);
+        }
       }
     }
 
-    syncPaymentToFirestore(newPayment);
+    if (syncToRemote) {
+      syncPaymentToFirestore(newPayment);
+    }
     this.notifyChange();
     return newPayment;
   }
 
-  public updatePayment(id: string, updates: Partial<Payment>): Payment | undefined {
+  public updatePayment(id: string, updates: Partial<Payment>, syncToRemote: boolean = true): Payment | undefined {
     const index = this.payments.findIndex((payment) => payment.id === id || payment.receiptNumber === id);
     if (index === -1) return undefined;
     this.payments[index] = { ...this.payments[index], ...updates };
-    syncPaymentToFirestore(this.payments[index]);
+    if (syncToRemote) {
+      syncPaymentToFirestore(this.payments[index]);
+    }
     this.notifyChange();
     return this.payments[index];
   }
@@ -434,25 +467,32 @@ class InMemoryDatabase {
     return `WHOLE-${String(max + 1).padStart(5, '0')}`;
   }
 
-  public addWholesaler(input: Omit<Wholesaler, 'id' | 'wholesalerCode' | 'createdAt'>): Wholesaler {
+  public addWholesaler(
+    input: Omit<Wholesaler, 'id' | 'wholesalerCode' | 'createdAt'> & { id?: string; wholesalerCode?: string; createdAt?: string },
+    syncToRemote: boolean = true
+  ): Wholesaler {
     const now = new Date().toISOString();
     const wholesaler: Wholesaler = {
       ...input,
-      id: `wholesaler-${Date.now()}`,
-      wholesalerCode: this.generateNextWholesalerCode(),
-      createdAt: now,
+      id: input.id || `wholesaler-${Date.now()}`,
+      wholesalerCode: input.wholesalerCode || this.generateNextWholesalerCode(),
+      createdAt: input.createdAt || now,
       updatedAt: now,
     };
     this.wholesalers.unshift(wholesaler);
-    syncWholesalerToFirestore(wholesaler);
+    if (syncToRemote) {
+      syncWholesalerToFirestore(wholesaler);
+    }
     return { ...wholesaler };
   }
 
-  public updateWholesaler(id: string, updates: Partial<Wholesaler>): Wholesaler | undefined {
+  public updateWholesaler(id: string, updates: Partial<Wholesaler>, syncToRemote: boolean = true): Wholesaler | undefined {
     const index = this.wholesalers.findIndex((wholesaler) => wholesaler.id === id || wholesaler.wholesalerCode === id);
     if (index < 0) return undefined;
     this.wholesalers[index] = { ...this.wholesalers[index], ...updates, updatedAt: new Date().toISOString() };
-    syncWholesalerToFirestore(this.wholesalers[index]);
+    if (syncToRemote) {
+      syncWholesalerToFirestore(this.wholesalers[index]);
+    }
     return { ...this.wholesalers[index] };
   }
 
@@ -500,15 +540,63 @@ class InMemoryDatabase {
   }
 
   public addLedgerEntry(
-    entry: Omit<LedgerEntry, 'id' | 'createdAt'>
+    entry: Omit<LedgerEntry, 'id' | 'createdAt'> & { id?: string; createdAt?: string },
+    syncToRemote: boolean = true
   ): LedgerEntry {
+    const entryId = entry.id || `led-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // 1. Check if an entry with this exact ID already exists in local cache
+    const existingIndex = this.ledgerEntries.findIndex((e) => e.id === entryId);
+    if (existingIndex >= 0) {
+      this.ledgerEntries[existingIndex] = {
+        ...this.ledgerEntries[existingIndex],
+        ...entry,
+        id: entryId,
+      };
+      if (syncToRemote) {
+        syncLedgerEntryToFirestore(this.ledgerEntries[existingIndex]);
+      }
+      this.notifyChange();
+      return this.ledgerEntries[existingIndex];
+    }
+
+    // 2. Strict Idempotency & Deduplication Guard:
+    // Avoid creating duplicate entries for the exact same event
+    const duplicate = this.ledgerEntries.find((existing) => {
+      if (entry.transactionId && existing.transactionId) {
+        return (
+          existing.customerId === entry.customerId &&
+          existing.transactionId === entry.transactionId &&
+          existing.entryType === entry.entryType &&
+          existing.direction === entry.direction &&
+          (existing.quantity || 0) === (entry.quantity || 0)
+        );
+      }
+      return (
+        existing.customerId === entry.customerId &&
+        existing.date === entry.date &&
+        existing.entryType === entry.entryType &&
+        existing.direction === entry.direction &&
+        existing.description === entry.description &&
+        (existing.quantity || 0) === (entry.quantity || 0) &&
+        (existing.amount || 0) === (entry.amount || 0)
+      );
+    });
+
+    if (duplicate) {
+      return duplicate;
+    }
+
     const newEntry: LedgerEntry = {
       ...entry,
-      id: `led-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      createdAt: new Date().toISOString(),
+      id: entryId,
+      createdAt: entry.createdAt || new Date().toISOString(),
     };
     this.ledgerEntries.unshift(newEntry);
-    syncLedgerEntryToFirestore(newEntry);
+    if (syncToRemote) {
+      syncLedgerEntryToFirestore(newEntry);
+    }
+    this.notifyChange();
     return newEntry;
   }
 

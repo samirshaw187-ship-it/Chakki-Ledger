@@ -48,6 +48,7 @@ import {
   SystemPreferences,
 } from '../types';
 import { registerFirestoreDispatcher } from './firestore-dispatcher';
+import { LedgerService } from './ledger.service';
 
 const PROTOTYPE_DOC_IDS = new Set([
   'cust-01', 'cust-02', 'cust-03', 'cust-04', 'cust-05',
@@ -86,6 +87,7 @@ export class FirestoreSyncService {
       saveAuditLog: this.saveAuditLog.bind(this),
       saveSettings: this.saveSettings.bind(this),
       deleteCustomer: this.deleteCustomer.bind(this),
+      deleteLedgerEntry: this.deleteLedgerEntry.bind(this),
     });
 
     try {
@@ -117,9 +119,9 @@ export class FirestoreSyncService {
           }
           const existing = dbRepository.getUserById(user.id) || dbRepository.getUserByEmail(user.email);
           if (existing) {
-            dbRepository.updateUser(existing.id, user);
+            dbRepository.updateUser(existing.id, user, false);
           } else {
-            dbRepository.addUser(user);
+            dbRepository.addUser(user, false);
           }
         }
       } else {
@@ -129,20 +131,32 @@ export class FirestoreSyncService {
         }
       }
 
-      // 2. Customers
+      // 2. Customers (with deduplication)
       const customersSnap = await getDocs(collection(db, 'customers'));
       if (!customersSnap.empty) {
+        const seenCustomerKeys = new Set<string>();
         for (const docSnap of customersSnap.docs) {
           const customer = docSnap.data() as Customer;
           if (PROTOTYPE_DOC_IDS.has(docSnap.id) || customer.customerCode?.startsWith('CUST-0000')) {
             try { await deleteDoc(docSnap.ref); } catch {}
             continue;
           }
+
+          const key = (customer.phone && customer.phone.trim())
+            ? `phone_${customer.phone.trim()}`
+            : `name_${(customer.name || '').trim().toLowerCase()}`;
+
+          if (seenCustomerKeys.has(key)) {
+            try { await deleteDoc(docSnap.ref); } catch {}
+            continue;
+          }
+          seenCustomerKeys.add(key);
+
           const existing = dbRepository.getCustomerById(customer.id);
           if (existing) {
-            dbRepository.updateCustomer(existing.id, customer);
+            dbRepository.updateCustomer(existing.id, customer, false);
           } else {
-            dbRepository.addCustomer(customer);
+            dbRepository.addCustomer(customer, false);
           }
         }
       }
@@ -150,13 +164,21 @@ export class FirestoreSyncService {
       // 3. Transactions
       const txnsSnap = await getDocs(collection(db, 'transactions'));
       if (!txnsSnap.empty) {
+        const seenTxnNumbers = new Set<string>();
         for (const docSnap of txnsSnap.docs) {
           const txn = docSnap.data() as Transaction;
           if (PROTOTYPE_DOC_IDS.has(docSnap.id) || txn.transactionNumber?.startsWith('TXN-2026-000')) {
             try { await deleteDoc(docSnap.ref); } catch {}
             continue;
           }
-          dbRepository.saveTransaction(txn);
+          if (txn.transactionNumber && seenTxnNumbers.has(txn.transactionNumber)) {
+            try { await deleteDoc(docSnap.ref); } catch {}
+            continue;
+          }
+          if (txn.transactionNumber) {
+            seenTxnNumbers.add(txn.transactionNumber);
+          }
+          dbRepository.saveTransaction(txn, false);
         }
       }
 
@@ -171,9 +193,9 @@ export class FirestoreSyncService {
           }
           const existing = dbRepository.getPayments().find((p) => p.id === pmt.id);
           if (existing) {
-            dbRepository.updatePayment(pmt.id, pmt);
+            dbRepository.updatePayment(pmt.id, pmt, false);
           } else {
-            dbRepository.addPayment(pmt);
+            dbRepository.addPayment(pmt, false);
           }
         }
       }
@@ -189,26 +211,43 @@ export class FirestoreSyncService {
           }
           const existing = dbRepository.getWholesalerById(w.id);
           if (existing) {
-            dbRepository.updateWholesaler(w.id, w);
+            dbRepository.updateWholesaler(w.id, w, false);
           } else {
-            dbRepository.addWholesaler(w);
+            dbRepository.addWholesaler(w, false);
           }
         }
       }
 
-      // 6. Ledger entries
+      // 6. Ledger entries (with strict deduplication & purge of duplicated loop copies)
       const ledgerSnap = await getDocs(collection(db, 'ledger_entries'));
       if (!ledgerSnap.empty) {
+        const seenLedgerKeys = new Set<string>();
         for (const docSnap of ledgerSnap.docs) {
           const entry = docSnap.data() as LedgerEntry;
           if (PROTOTYPE_DOC_IDS.has(docSnap.id)) {
             try { await deleteDoc(docSnap.ref); } catch {}
             continue;
           }
-          const existing = dbRepository.getLedgerEntryById(entry.id);
-          if (!existing) {
-            dbRepository.addLedgerEntry(entry);
+
+          // Generate unique deduplication signature
+          const key = (entry.transactionId && entry.transactionId.trim() !== '')
+            ? `tx_${entry.customerId}_${entry.transactionId}_${entry.entryType}_${entry.direction}`
+            : `manual_${entry.customerId}_${entry.date?.slice(0, 16)}_${entry.entryType}_${entry.direction}_${entry.description}_${entry.quantity || 0}_${entry.amount || 0}`;
+
+          if (seenLedgerKeys.has(key)) {
+            // This is a runaway duplicate entry created by prior feedback loops! Purge from Firestore
+            try {
+              await deleteDoc(docSnap.ref);
+            } catch (delErr) {
+              console.warn('Failed to delete duplicate ledger entry from Firestore:', docSnap.id, delErr);
+            }
+            continue;
           }
+
+          seenLedgerKeys.add(key);
+
+          // Add locally without echoing back to Firestore
+          dbRepository.addLedgerEntry(entry, false);
         }
       }
 
@@ -229,6 +268,27 @@ export class FirestoreSyncService {
       } else {
         await this.saveSettings();
       }
+
+      // 8. Re-evaluate customer balances to ensure 100% mathematical integrity
+      for (const customer of dbRepository.getCustomers()) {
+        const calculated = LedgerService.calculateCustomerBalances(customer.id);
+        const hasDelta =
+          customer.wheatBalanceKg !== calculated.wheatBalanceKg ||
+          customer.currentDueAmount !== calculated.cashDueAmount ||
+          customer.riceCreditAmount !== calculated.riceCreditAmount;
+
+        if (hasDelta) {
+          dbRepository.updateCustomer(
+            customer.id,
+            {
+              wheatBalanceKg: calculated.wheatBalanceKg,
+              currentDueAmount: calculated.cashDueAmount,
+              riceCreditAmount: calculated.riceCreditAmount,
+            },
+            true // Sync corrected, legitimate balance to Firestore customer record
+          );
+        }
+      }
     } catch (err) {
       console.warn('Error during Firestore sync down:', err);
     }
@@ -248,9 +308,9 @@ export class FirestoreSyncService {
             if (change.type === 'added' || change.type === 'modified') {
               const existing = dbRepository.getCustomerById(customer.id);
               if (existing) {
-                dbRepository.updateCustomer(customer.id, customer);
+                dbRepository.updateCustomer(customer.id, customer, false);
               } else {
-                dbRepository.addCustomer(customer);
+                dbRepository.addCustomer(customer, false);
               }
             } else if (change.type === 'removed') {
               dbRepository.deleteCustomer(customer.id || change.doc.id, false);
@@ -270,7 +330,19 @@ export class FirestoreSyncService {
           snapshot.docChanges().forEach((change) => {
             const txn = change.doc.data() as Transaction;
             if (change.type === 'added' || change.type === 'modified') {
-              dbRepository.saveTransaction(txn);
+              dbRepository.saveTransaction(txn, false);
+              if (txn.customerId) {
+                const bal = LedgerService.calculateCustomerBalances(txn.customerId);
+                dbRepository.updateCustomer(
+                  txn.customerId,
+                  {
+                    wheatBalanceKg: bal.wheatBalanceKg,
+                    currentDueAmount: bal.cashDueAmount,
+                    riceCreditAmount: bal.riceCreditAmount,
+                  },
+                  false
+                );
+              }
             } else if (change.type === 'removed') {
               dbRepository.removeTransaction(txn.id);
             }
@@ -291,9 +363,9 @@ export class FirestoreSyncService {
             if (change.type === 'added' || change.type === 'modified') {
               const existing = dbRepository.getPayments().find((p) => p.id === payment.id);
               if (existing) {
-                dbRepository.updatePayment(payment.id, payment);
+                dbRepository.updatePayment(payment.id, payment, false);
               } else {
-                dbRepository.addPayment(payment);
+                dbRepository.addPayment(payment, false);
               }
             }
           });
@@ -304,19 +376,65 @@ export class FirestoreSyncService {
       );
       this.listeners.push(unsubPayments);
 
-      // Listen for ledger entries
+      // Listen for ledger entries (WITH DEDUPLICATION & ZERO FEEDBACK LOOP)
       const unsubLedger = onSnapshot(
         collection(db, 'ledger_entries'),
         (snapshot) => {
           snapshot.docChanges().forEach((change) => {
             const entry = change.doc.data() as LedgerEntry;
             if (change.type === 'added') {
-              const existing = dbRepository.getLedgerEntryById(entry.id);
-              if (!existing) {
-                dbRepository.addLedgerEntry(entry);
+              // 1. If already in memory by ID, ignore
+              const existingById = dbRepository.getLedgerEntryById(entry.id);
+              if (existingById) return;
+
+              // 2. Check if identical entry already exists in memory
+              const key = (entry.transactionId && entry.transactionId.trim() !== '')
+                ? `tx_${entry.customerId}_${entry.transactionId}_${entry.entryType}_${entry.direction}`
+                : `manual_${entry.customerId}_${entry.date?.slice(0, 16)}_${entry.entryType}_${entry.direction}_${entry.description}_${entry.quantity || 0}_${entry.amount || 0}`;
+
+              const isDuplicate = dbRepository.getLedgerEntries().some((e) => {
+                const existingKey = (e.transactionId && e.transactionId.trim() !== '')
+                  ? `tx_${e.customerId}_${e.transactionId}_${e.entryType}_${e.direction}`
+                  : `manual_${e.customerId}_${e.date?.slice(0, 16)}_${e.entryType}_${e.direction}_${e.description}_${e.quantity || 0}_${e.amount || 0}`;
+                return existingKey === key;
+              });
+
+              if (isDuplicate) {
+                // Remove duplicate document from Firestore so it doesn't linger
+                deleteDoc(change.doc.ref).catch(() => {});
+                return;
+              }
+
+              // 3. Genuine remote entry: insert locally WITHOUT remote echo!
+              dbRepository.addLedgerEntry(entry, false);
+
+              // Update customer balances locally
+              if (entry.customerId) {
+                const bal = LedgerService.calculateCustomerBalances(entry.customerId);
+                dbRepository.updateCustomer(
+                  entry.customerId,
+                  {
+                    wheatBalanceKg: bal.wheatBalanceKg,
+                    currentDueAmount: bal.cashDueAmount,
+                    riceCreditAmount: bal.riceCreditAmount,
+                  },
+                  false
+                );
               }
             } else if (change.type === 'removed') {
               dbRepository.removeLedgerEntry(entry.id);
+              if (entry.customerId) {
+                const bal = LedgerService.calculateCustomerBalances(entry.customerId);
+                dbRepository.updateCustomer(
+                  entry.customerId,
+                  {
+                    wheatBalanceKg: bal.wheatBalanceKg,
+                    currentDueAmount: bal.cashDueAmount,
+                    riceCreditAmount: bal.riceCreditAmount,
+                  },
+                  false
+                );
+              }
             }
           });
         },
@@ -335,9 +453,9 @@ export class FirestoreSyncService {
             if (change.type === 'added' || change.type === 'modified') {
               const existing = dbRepository.getUserById(user.id) || dbRepository.getUserByEmail(user.email);
               if (existing) {
-                dbRepository.updateUser(existing.id, user);
+                dbRepository.updateUser(existing.id, user, false);
               } else {
-                dbRepository.addUser(user);
+                dbRepository.addUser(user, false);
               }
             }
           });
@@ -360,6 +478,15 @@ export class FirestoreSyncService {
       await deleteDoc(docRef);
     } catch (e) {
       console.warn(`Firestore: error deleting customer ${id}`, e);
+    }
+  }
+
+  public static async deleteLedgerEntry(id: string): Promise<void> {
+    try {
+      const docRef = doc(db, 'ledger_entries', id);
+      await deleteDoc(docRef);
+    } catch (e) {
+      console.warn(`Firestore: error deleting ledger entry ${id}`, e);
     }
   }
 

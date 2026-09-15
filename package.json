@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx src/services/__tests__/transaction-audit.test.ts && tsx --test src/services/__tests__/settlement-regression.test.ts src/services/__tests__/settings.service.test.ts"
+    "test": "tsx src/services/__tests__/transaction-audit.test.ts && tsx --test src/services/__tests__/settlement-regression.test.ts src/services/__tests__/settings.service.test.ts src/services/__tests__/deduplication-balance.test.ts"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",
