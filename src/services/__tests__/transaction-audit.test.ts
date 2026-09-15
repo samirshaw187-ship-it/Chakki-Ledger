@@ -42,10 +42,10 @@ const ownerActor = {
   role: UserRole.OWNER,
 };
 
-const staffActor = {
-  id: 'usr-staff-test',
-  name: 'Ramesh (Staff)',
-  role: UserRole.STAFF,
+const unauthorizedActor = {
+  id: 'usr-unauth-test',
+  name: 'Unauthorized Operator',
+  role: 'OPERATOR' as any,
 };
 
 async function runAllTests() {
@@ -284,15 +284,15 @@ async function runAllTests() {
           reason: 'Staff trying to modify balance',
           items: [{ itemId: res4.transaction.items[0].id, newQuantity: 15, newRate: 0 }],
         },
-        staffActor
+        unauthorizedActor
       );
     } catch (e: any) {
       staffBlocked = true;
       assert.ok(e.message.toLowerCase().includes('unauthorized') || e.message.toLowerCase().includes('permission'), 'Error must mention unauthorized or permission');
     }
 
-    assert.ok(staffBlocked, 'Staff must be blocked from correcting transactions server-side');
-    console.log('✔ Test 4: Unauthorized correction attempt by STAFF rejected server-side');
+    assert.ok(staffBlocked, 'Unauthorized operator must be blocked from correcting transactions server-side');
+    console.log('✔ Test 4: Unauthorized correction attempt rejected server-side');
     passed++;
   } catch (err: any) {
     console.error('✘ Test 4 FAILED:', err.message);

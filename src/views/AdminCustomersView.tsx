@@ -71,10 +71,10 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({ onNaviga
 
   // Permissions
   const isOwner = role === UserRole.OWNER;
-  const isStaff = role === UserRole.STAFF;
-  const canEdit = isOwner || isStaff;
-  const canToggleStatus = isOwner;
-  const canAdd = isOwner || isStaff;
+  const isAdmin = role === UserRole.ADMIN;
+  const canEdit = isOwner || isAdmin;
+  const canToggleStatus = isOwner || isAdmin;
+  const canAdd = isOwner || isAdmin;
 
   // Query customers
   const queryResult = CustomerService.getCustomers({
@@ -136,7 +136,7 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({ onNaviga
         {
           id: user.id,
           name: user.name,
-          role: role || UserRole.STAFF,
+          role: role || UserRole.ADMIN,
         }
       );
       setEditCustomer(null);
@@ -215,7 +215,7 @@ export const AdminCustomersView: React.FC<AdminCustomersViewProps> = ({ onNaviga
         {
           id: user.id,
           name: user.name,
-          role: role || UserRole.STAFF,
+          role: role || UserRole.ADMIN,
         }
       );
       setIsAddModalOpen(false);

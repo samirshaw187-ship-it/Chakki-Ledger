@@ -62,7 +62,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               {userName ? userName.charAt(0).toUpperCase() : <UserIcon className="w-3.5 h-3.5" />}
             </div>
             <span className="text-[11px] font-bold text-stone-700 hidden xs:inline pr-1">
-              {activeRole === 'OWNER' ? 'Owner' : activeRole === 'STAFF' ? 'Staff' : 'Acct'}
+              {activeRole === UserRole.OWNER ? 'Owner' : 'Admin'}
             </span>
           </button>
         </div>

@@ -44,21 +44,21 @@ export const TopBar: React.FC<TopBarProps> = ({
 
         {/* Action Controls: Role switch, View Mode toggle, and Logout */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Quick Role Switcher (Visible on medium+ screens or compact on mobile) */}
+          {/* Quick Role Switcher */}
           <div className="flex items-center bg-stone-100 p-0.5 sm:p-1 rounded-lg border border-stone-200 text-xs">
-            {(['OWNER', 'STAFF', 'ACCOUNTANT'] as UserRole[]).map((role) => (
+            {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
               <button
                 key={role}
                 type="button"
                 onClick={() => onRoleChange(role)}
                 title={`Switch active test session to ${role}`}
-                className={`px-1.5 sm:px-2 py-1 rounded-md text-[11px] sm:text-xs font-medium transition-colors cursor-pointer ${
+                className={`px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-medium transition-colors cursor-pointer ${
                   activeRole === role
                     ? 'bg-white text-stone-900 shadow-xs font-semibold'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                {role === 'OWNER' ? 'Owner' : role === 'STAFF' ? 'Staff' : 'Acct'}
+                {role === UserRole.OWNER ? 'Owner' : 'Admin'}
               </button>
             ))}
           </div>

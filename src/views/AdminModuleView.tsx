@@ -13,6 +13,7 @@ import { AdminCustomersView } from './AdminCustomersView';
 import { AdminAuditLogsView } from './admin/AdminAuditLogsView';
 import { SettingsService, RateFieldName } from '../services/settings.service';
 import { useAuth } from '../modules/auth/AuthContext';
+import { ChangePasswordCard } from '../components/domain/ChangePasswordCard';
 
 export interface AdminModuleViewProps {
   modulePath: string;
@@ -156,6 +157,11 @@ export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, on
               </p>
             </div>
           </Card>
+        </div>
+
+        {/* Admin Password Change Card */}
+        <div className="max-w-2xl">
+          <ChangePasswordCard />
         </div>
       </div>
     );

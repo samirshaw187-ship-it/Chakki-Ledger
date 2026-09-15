@@ -1,7 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { SummaryCard } from '../components/domain/SummaryCard';
 import { StatusBadge } from '../components/ui/StatusBadge';
+import { dbRepository } from '../db/in-memory-db';
 import {
   IndianRupee,
   Calendar,
@@ -12,70 +13,50 @@ import {
   ArrowUpRight,
   Receipt,
   Info,
+  Clock,
+  UserCheck,
+  ArrowRight,
 } from 'lucide-react';
-import { TransactionStatus } from '../types';
+import { TransactionStatus, UserRole, GrainType, ItemType } from '../types';
 
 export interface AdminDashboardViewProps {
   onNavigate: (path: string) => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNavigate }) => {
-  // Sample Illustrative Data (strictly separated from future live calculations)
-  const sampleMetrics = {
-    todayRevenue: '₹4,820',
-    monthlyRevenue: '₹1,42,800',
-    wheatReceived: '185 kg',
-    ricePurchased: '64 kg',
-    riceProfit: '₹2,160 (22%)',
-  };
+  const [, setDataVersion] = useState(0);
 
-  const sampleRecentTransactions = [
-    {
-      id: 'tx-001',
-      number: 'TX-2026-001',
-      time: '08:20 AM',
-      customer: 'Rahul Das',
-      type: 'Wheat Deposit',
-      qtyAmount: '15.0 kg Raw Wheat',
-      status: TransactionStatus.COMPLETED,
-    },
-    {
-      id: 'tx-002',
-      number: 'TX-2026-002',
-      time: '09:05 AM',
-      customer: 'Rahim Sheikh',
-      type: 'Rice → Atta Settlement',
-      qtyAmount: '15 kg Rice (₹315) vs 5 kg Atta (₹200) → Net ₹115',
-      status: TransactionStatus.COMPLETED,
-    },
-    {
-      id: 'tx-003',
-      number: 'TX-2026-003',
-      time: '09:45 AM',
-      customer: 'Amit Mondal',
-      type: 'Atta Retail Sale',
-      qtyAmount: '10.0 kg Chali Atta · ₹340.00',
-      status: TransactionStatus.COMPLETED,
-    },
-    {
-      id: 'tx-004',
-      number: 'TX-2026-004',
-      time: '10:15 AM',
-      customer: 'Karim',
-      type: 'Wheat Deposit',
-      qtyAmount: '25.0 kg Raw Wheat',
-      status: TransactionStatus.COMPLETED,
-    },
-    {
-      id: 'tx-005',
-      number: 'TX-2026-005',
-      time: '11:10 AM',
-      customer: 'Rakesh',
-      type: 'Ration Rice Purchase',
-      qtyAmount: '20.0 kg Rice @ ₹21/kg · ₹420.00',
-      status: TransactionStatus.CONFIRMED,
-    },
-  ];
+  useEffect(() => {
+    const unsub = dbRepository.subscribe(() => {
+      setDataVersion((v) => v + 1);
+    });
+    return unsub;
+  }, []);
+
+  const transactions = dbRepository.getTransactions();
+  const customers = dbRepository.getCustomers();
+  const users = dbRepository.getUsers();
+  const pendingApprovals = users.filter(
+    (u) => u.role === UserRole.OWNER && (!u.isApproved || u.approvalStatus === 'PENDING')
+  );
+
+  let totalWheatDepositedKg = 0;
+  let totalRicePurchasedKg = 0;
+  let totalRevenue = 0;
+
+  transactions.forEach((tx) => {
+    totalRevenue += Number(tx.paidAmount || 0);
+    tx.items?.forEach((item) => {
+      if (item.grainType === GrainType.WHEAT || item.itemType === ItemType.WHEAT) {
+        totalWheatDepositedKg += Number(item.quantity || 0);
+      }
+      if (item.grainType === GrainType.RATION_RICE || item.itemType === ItemType.RICE) {
+        totalRicePurchasedKg += Number(item.quantity || 0);
+      }
+    });
+  });
+
+  const recentTransactions = [...transactions].reverse().slice(0, 8);
 
   const sampleRevenueTrend = [
     { day: 'Mon', value: 3800, height: '55%' },
@@ -101,48 +82,66 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
         }
       />
 
-      {/* Illustrative Data Notice */}
-      <div className="flex items-center gap-2 bg-stone-50 border border-stone-200 p-3 rounded-xl text-xs text-stone-600">
-        <Info className="w-4 h-4 text-emerald-700 shrink-0" />
-        <span>
-          <strong>Dashboard Placeholder:</strong> The metrics and charts below showcase sample/illustrative data. Live database aggregations will be plugged in during the analytics and reporting phases.
-        </span>
-      </div>
+      {/* Pending Shop Owner Approvals Alert Banner */}
+      {pendingApprovals.length > 0 && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 shadow-2xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-900 flex items-center justify-center shrink-0">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-amber-950">
+                {pendingApprovals.length} Shop Owner Registration{pendingApprovals.length > 1 ? 's' : ''} Awaiting Your Approval
+              </h3>
+              <p className="text-xs text-amber-800">
+                New shop owners cannot access the system until approved by Administrator (Samir).
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('/admin/users')}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-amber-800 hover:bg-amber-900 text-white rounded-xl text-xs font-semibold shadow-2xs transition-colors cursor-pointer shrink-0"
+          >
+            <UserCheck className="w-4 h-4" /> Review & Approve <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
-      {/* 5 Requested Dashboard Summary Cards */}
+      {/* 5 Real-Time Summary Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3.5">
         <SummaryCard
-          label="Today's Revenue"
-          value={sampleMetrics.todayRevenue}
+          label="Total Collected"
+          value={`₹${totalRevenue.toLocaleString('en-IN')}`}
           subtext="Cash & UPI collected"
           icon={IndianRupee}
           variant="emerald"
         />
         <SummaryCard
-          label="Monthly Revenue"
-          value={sampleMetrics.monthlyRevenue}
-          subtext="September month-to-date"
+          label="Registered Customers"
+          value={`${customers.length}`}
+          subtext="Active customer accounts"
           icon={Calendar}
           variant="stone"
         />
         <SummaryCard
-          label="Wheat Received"
-          value={sampleMetrics.wheatReceived}
-          subtext="Raw grain deposited today"
+          label="Wheat Deposited"
+          value={`${totalWheatDepositedKg.toFixed(1)} kg`}
+          subtext="Raw grain in milling silos"
           icon={Wheat}
           variant="amber"
         />
         <SummaryCard
           label="Rice Purchased"
-          value={sampleMetrics.ricePurchased}
-          subtext="Ration rice from customers"
+          value={`${totalRicePurchasedKg.toFixed(1)} kg`}
+          subtext="Ration rice acquired"
           icon={ShoppingBag}
           variant="stone"
         />
         <SummaryCard
-          label="Rice Profit"
-          value={sampleMetrics.riceProfit}
-          subtext="Wholesale trading spread"
+          label="Total Transactions"
+          value={`${transactions.length}`}
+          subtext="Live recorded entries"
           icon={TrendingUp}
           variant="emerald"
         />
@@ -253,23 +252,51 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                 <th className="p-3.5">Time</th>
                 <th className="p-3.5">Customer</th>
                 <th className="p-3.5">Type</th>
-                <th className="p-3.5">Quantity / Amount Summary</th>
+                <th className="p-3.5">Details</th>
                 <th className="p-3.5 text-center">Status</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100">
-              {sampleRecentTransactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-stone-50/60 transition-colors">
-                  <td className="p-3.5 font-mono font-semibold text-stone-700">{tx.number}</td>
-                  <td className="p-3.5 text-stone-500">{tx.time}</td>
-                  <td className="p-3.5 font-bold text-stone-900">{tx.customer}</td>
-                  <td className="p-3.5 font-medium text-stone-700">{tx.type}</td>
-                  <td className="p-3.5 font-mono text-stone-600">{tx.qtyAmount}</td>
-                  <td className="p-3.5 text-center">
-                    <StatusBadge status={tx.status} />
+              {recentTransactions.length === 0 ? (
+                <tr>
+                  <td colSpan={6} className="p-6 text-center text-stone-400">
+                    No transactions recorded yet. When a shop owner deposits wheat or records an entry, it will show here immediately.
                   </td>
                 </tr>
-              ))}
+              ) : (
+                recentTransactions.map((tx) => {
+                  const customer = customers.find((c) => c.id === tx.customerId);
+                  const custName = customer?.name || tx.customerName || 'Walk-in Customer';
+                  const timeFormatted = new Date(tx.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                  let summaryText = '';
+                  if (tx.items && tx.items.length > 0) {
+                    summaryText = tx.items
+                      .map((i) => `${i.quantity} ${i.unit || 'kg'} ${i.grainType || i.itemType || ''}`.trim())
+                      .join(', ');
+                    if (tx.netAmount) {
+                      summaryText += ` · Net ₹${tx.netAmount}`;
+                    }
+                  } else if (tx.netAmount) {
+                    summaryText = `Amount: ₹${tx.netAmount}`;
+                  } else {
+                    summaryText = 'Standard ledger entry';
+                  }
+
+                  return (
+                    <tr key={tx.id} className="hover:bg-stone-50/60 transition-colors">
+                      <td className="p-3.5 font-mono font-semibold text-stone-700">{tx.transactionNumber}</td>
+                      <td className="p-3.5 text-stone-500">{timeFormatted}</td>
+                      <td className="p-3.5 font-bold text-stone-900">{custName}</td>
+                      <td className="p-3.5 font-medium text-stone-700 capitalize">{tx.type.toLowerCase().replace('_', ' ')}</td>
+                      <td className="p-3.5 font-mono text-stone-600">{summaryText}</td>
+                      <td className="p-3.5 text-center">
+                        <StatusBadge status={tx.status} />
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

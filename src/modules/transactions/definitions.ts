@@ -119,7 +119,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-emerald-100 text-emerald-900 border-emerald-300',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'quantity', label: 'Wheat Quantity', type: 'number', placeholder: 'e.g. 50', unit: 'kg', min: 0.1, step: 0.1, required: true },
       { name: 'notes', label: 'Bag Marks / Notes', type: 'text', placeholder: 'e.g. 1 bag marked RS' },
@@ -196,7 +196,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-amber-100 text-amber-900 border-amber-300',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       {
         name: 'attaType',
@@ -340,18 +340,18 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       });
 
       // 3. Financial Entries
-      if (tx.balanceDelta > 0) {
+      if (tx.netAmount > 0) {
         entries.push({
           customerId: tx.customerId,
           customerName: customerName || tx.customerName,
           transactionId: tx.id,
           transactionNumber: tx.transactionNumber,
           entryType: LedgerEntryType.CASH,
-          amount: tx.balanceDelta,
+          amount: tx.netAmount,
           unit: LedgerUnit.RUPEE,
           direction: LedgerDirection.OUT,
           status: LedgerStatus.DUE,
-          description: `Unpaid Milling Charges (Due added: ${formatRupees(tx.balanceDelta)})`,
+          description: `Milling Exchange Charges (${formatRupees(tx.netAmount)})`,
           date: tx.date,
           createdById: tx.createdById,
           createdByName: tx.createdByName,
@@ -395,7 +395,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-sky-100 text-sky-900 border-sky-300',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'quantity', label: 'Rice Quantity', type: 'number', placeholder: 'e.g. 20', unit: 'kg', min: 0.1, step: 0.1, required: true },
       { name: 'ratePerUnit', label: 'Purchase Rate', type: 'number', placeholder: '21', unit: '₹/kg', required: true },
@@ -472,7 +472,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-emerald-100 text-emerald-900 border-emerald-400 font-bold',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'riceQty', label: 'Rice Sold by Customer', type: 'number', placeholder: '15', unit: 'kg', min: 0.1, step: 0.1, required: true },
       { name: 'riceRate', label: 'Rice Rate', type: 'number', placeholder: '21', unit: '₹/kg', required: true },
@@ -636,6 +636,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       }
 
       if (tx.settlementDirection !== 'SETTLED' && tx.netAmount > 0) {
+        const isCredit = tx.settlementDirection === 'CUSTOMER_RECEIVES';
         entries.push({
           customerId: tx.customerId,
           customerName: customerName || tx.customerName,
@@ -644,9 +645,9 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
           entryType: LedgerEntryType.CASH,
           amount: tx.netAmount,
           unit: LedgerUnit.RUPEE,
-          direction: tx.balanceDelta < 0 ? LedgerDirection.IN : LedgerDirection.OUT,
-          status: tx.balanceDelta < 0 ? LedgerStatus.CREDIT : LedgerStatus.DUE,
-          description: `Rice-Atta Settlement Balance (${tx.balanceDelta < 0 ? 'Customer Credit' : 'Customer Due'})`,
+          direction: isCredit ? LedgerDirection.IN : LedgerDirection.OUT,
+          status: isCredit ? LedgerStatus.CREDIT : LedgerStatus.DUE,
+          description: `Rice-Atta Settlement Balance (${isCredit ? 'Customer Credit' : 'Customer Due'})`,
           date: tx.date,
           createdById: tx.createdById,
           createdByName: tx.createdByName,
@@ -672,7 +673,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-teal-100 text-teal-900 border-teal-400 font-bold',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'quantity', label: 'Rice Quantity', type: 'number', placeholder: 'e.g. 15', unit: 'kg', min: 0.1, step: 0.1, required: true },
       { name: 'ratePerUnit', label: 'Purchase Rate', type: 'number', placeholder: '21', unit: '₹/kg', required: true },
@@ -757,7 +758,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-amber-100 text-amber-900 border-amber-400 font-bold',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'quantity', label: 'Wheat Quantity', type: 'number', placeholder: 'e.g. 15', unit: 'kg', min: 0.1, step: 0.1, required: true },
       { name: 'ratePerUnit', label: 'Wheat Cash Rate', type: 'number', placeholder: '24', unit: '₹/kg', required: true },
@@ -842,7 +843,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-amber-100 text-amber-900 border-amber-300',
     },
     requiresCustomer: false, // Walk-ins allowed
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'quantity', label: 'Atta Quantity', type: 'number', placeholder: 'e.g. 5', unit: 'kg', min: 0.1, step: 0.1, required: true },
       { name: 'ratePerUnit', label: 'Selling Rate', type: 'number', placeholder: '40', unit: '₹/kg', required: true },
@@ -860,12 +861,12 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
         totalAmount: safeMultiply(5, rates.rollAttaSellingRate || 40),
       },
     ],
-    calculate: (items, paid = 0) => {
+    calculate: (items, paid) => {
       const item = items[0] || { quantity: 0, ratePerUnit: 40, totalAmount: 0 };
       const qty = roundQuantity(item.quantity || 0);
       const rate = roundCurrency(item.ratePerUnit || 40);
       const total = safeMultiply(qty, rate);
-      const paidAmt = roundCurrency(paid || total); // default to full payment for retail
+      const paidAmt = roundCurrency(typeof paid === 'number' ? paid : total);
       const due = safeSubtract(total, paidAmt);
 
       return {
@@ -875,7 +876,9 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
         paidAmount: paidAmt,
         balanceDelta: due,
         settlementDirection: due > 0 ? 'CUSTOMER_PAYS' : 'SETTLED',
-        settlementText: due > 0 ? `Total ₹${total}. Due: ₹${due}` : `Paid ₹${total} in full`,
+        settlementText: due > 0
+          ? (paidAmt > 0 ? `Total ₹${total}. Paid ₹${paidAmt}. Due: ₹${due}` : `Total ₹${total}. Added to Khata Due: ₹${due}`)
+          : `Paid ₹${total} in full cash`,
         itemsSummary: `${formatKg(qty)} Roll Atta @ ₹${rate}/kg = ₹${total}`,
         detailedLines: [
           { label: 'Atta Sold', quantity: qty, unit: 'kg', rate, amount: total, type: 'out' },
@@ -887,25 +890,65 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
     buildLedgerEntries: (tx, customerName) => {
       if (!tx.customerId) return [];
       const item = tx.items[0];
-      return [
-        {
+      const entries: Array<Omit<LedgerEntry, 'id' | 'createdAt'>> = [];
+
+      // 1. Atta stock outflow
+      entries.push({
+        customerId: tx.customerId,
+        customerName: customerName || tx.customerName,
+        transactionId: tx.id,
+        transactionNumber: tx.transactionNumber,
+        entryType: LedgerEntryType.ATTA,
+        quantity: item?.quantity || 0,
+        unit: LedgerUnit.KG,
+        rate: item?.ratePerUnit,
+        amount: tx.netAmount,
+        direction: LedgerDirection.OUT,
+        status: tx.balanceDelta > 0 ? LedgerStatus.DUE : LedgerStatus.PAID,
+        description: `Direct Atta Sale (${formatKg(item?.quantity || 0)} @ ₹${item?.ratePerUnit}/kg)`,
+        date: tx.date,
+        createdById: tx.createdById,
+        createdByName: tx.createdByName,
+      });
+
+      // 2. Financial Entries
+      if (tx.netAmount > 0) {
+        entries.push({
           customerId: tx.customerId,
           customerName: customerName || tx.customerName,
           transactionId: tx.id,
           transactionNumber: tx.transactionNumber,
-          entryType: LedgerEntryType.ATTA,
-          quantity: item?.quantity || 0,
-          unit: LedgerUnit.KG,
-          rate: item?.ratePerUnit,
+          entryType: LedgerEntryType.CASH,
           amount: tx.netAmount,
+          unit: LedgerUnit.RUPEE,
           direction: LedgerDirection.OUT,
-          status: tx.balanceDelta > 0 ? LedgerStatus.DUE : LedgerStatus.PAID,
-          description: `Direct Atta Sale (${formatKg(item?.quantity || 0)} @ ₹${item?.ratePerUnit})`,
+          status: LedgerStatus.DUE,
+          description: `Atta Retail Sale Bill (${formatRupees(tx.netAmount)})`,
           date: tx.date,
           createdById: tx.createdById,
           createdByName: tx.createdByName,
-        },
-      ];
+        });
+      }
+
+      if (tx.paidAmount > 0) {
+        entries.push({
+          customerId: tx.customerId,
+          customerName: customerName || tx.customerName,
+          transactionId: tx.id,
+          transactionNumber: tx.transactionNumber,
+          entryType: LedgerEntryType.CASH,
+          amount: tx.paidAmount,
+          unit: LedgerUnit.RUPEE,
+          direction: LedgerDirection.IN,
+          status: LedgerStatus.PAID,
+          description: `Cash Paid for Atta (${formatRupees(tx.paidAmount)})`,
+          date: tx.date,
+          createdById: tx.createdById,
+          createdByName: tx.createdByName,
+        });
+      }
+
+      return entries;
     },
   },
 
@@ -924,7 +967,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-emerald-100 text-emerald-900 border-emerald-300',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.STAFF],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'amount', label: 'Payment Amount', type: 'number', placeholder: 'e.g. 500', unit: '₹', min: 1, required: true },
       { name: 'notes', label: 'Payment Note', type: 'text', placeholder: 'Cash received at counter' },
@@ -996,7 +1039,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-indigo-100 text-indigo-900 border-indigo-300',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.ACCOUNTANT],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'amount', label: 'Credit Amount', type: 'number', placeholder: 'e.g. 200', unit: '₹', min: 1, required: true },
       { name: 'notes', label: 'Reason for Credit', type: 'text', placeholder: 'e.g. Goodwill credit / advance' },
@@ -1064,7 +1107,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-rose-100 text-rose-900 border-rose-300',
     },
     requiresCustomer: true,
-    allowedRoles: [UserRole.OWNER, UserRole.ACCOUNTANT],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'amount', label: 'Debit Amount', type: 'number', placeholder: 'e.g. 150', unit: '₹', min: 1, required: true },
       { name: 'notes', label: 'Reason for Debit', type: 'text', placeholder: 'e.g. Bag fee, manual adjustment' },
@@ -1200,7 +1243,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-sky-100 text-sky-900 border-sky-300',
     },
     requiresCustomer: false, // Wholesaler, not retail customer
-    allowedRoles: [UserRole.OWNER, UserRole.ACCOUNTANT],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'quantity', label: 'Total Rice Quantity', type: 'number', placeholder: 'e.g. 1000', unit: 'kg', min: 10, required: true },
       { name: 'ratePerUnit', label: 'Wholesale Sale Rate', type: 'number', placeholder: 'e.g. 26', unit: '₹/kg', required: true },
@@ -1253,7 +1296,7 @@ export const TRANSACTION_DEFINITIONS: Record<TransactionType, TransactionDefinit
       badge: 'bg-stone-100 text-stone-900 border-stone-300',
     },
     requiresCustomer: false,
-    allowedRoles: [UserRole.OWNER, UserRole.ACCOUNTANT],
+    allowedRoles: [UserRole.OWNER, UserRole.ADMIN],
     fields: [
       { name: 'amount', label: 'Expense Amount', type: 'number', placeholder: 'e.g. 1200', unit: '₹', min: 1, required: true },
       { name: 'notes', label: 'Expense Category / Paid To', type: 'text', placeholder: 'Electricity bill, stone maintenance, etc.', required: true },

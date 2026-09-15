@@ -110,8 +110,8 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
               Switch Test Role
             </span>
-            <div className="grid grid-cols-3 gap-1.5">
-              {(['OWNER', 'STAFF', 'ACCOUNTANT'] as UserRole[]).map((role) => (
+            <div className="grid grid-cols-2 gap-1.5">
+              {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
                 <button
                   key={role}
                   type="button"
@@ -125,7 +125,7 @@ export const MobileShell: React.FC<MobileShellProps> = ({
                       : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
                   }`}
                 >
-                  {role === 'OWNER' ? 'Owner' : role === 'STAFF' ? 'Staff' : 'Acct'}
+                  {role === UserRole.OWNER ? 'Shop Owner' : 'Administrator'}
                 </button>
               ))}
             </div>

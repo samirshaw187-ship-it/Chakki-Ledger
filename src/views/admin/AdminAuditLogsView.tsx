@@ -47,8 +47,7 @@ export const AdminAuditLogsView: React.FC<AdminAuditLogsViewProps> = ({ onNaviga
     if (found) return found.role;
     const n = (name || '').toUpperCase();
     if (n.includes('OWNER')) return 'OWNER';
-    if (n.includes('ACCOUNTANT')) return 'ACCOUNTANT';
-    if (n.includes('STAFF') || n.includes('OPERATOR')) return 'STAFF';
+    if (n.includes('ADMIN')) return 'ADMIN';
     return 'SYSTEM';
   };
 
@@ -56,10 +55,8 @@ export const AdminAuditLogsView: React.FC<AdminAuditLogsViewProps> = ({ onNaviga
     switch (role) {
       case 'OWNER':
         return 'bg-purple-100 text-purple-850 border-purple-300';
-      case 'ACCOUNTANT':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
-      case 'STAFF':
-        return 'bg-amber-100 text-amber-800 border-amber-300';
+      case 'ADMIN':
+        return 'bg-sky-100 text-sky-800 border-sky-300';
       default:
         return 'bg-stone-100 text-stone-700 border-stone-300';
     }

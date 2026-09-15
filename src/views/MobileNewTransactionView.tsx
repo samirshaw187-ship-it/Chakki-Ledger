@@ -11,6 +11,7 @@ import {
   UserRole,
   SettlementDirection,
   SettlementPaymentStatus,
+  TransactionStatus,
 } from '../types';
 import { useAuth } from '../modules/auth/AuthContext';
 import { dbRepository } from '../db/in-memory-db';
@@ -432,6 +433,114 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
     return roundCurrency(wePartialAmount || 0);
   }, [wePaymentOption, weExchangeCalc.calculatedExchangeValue, wePartialAmount]);
 
+  // Dedicated state for Atta Purchase (Retail) workflow
+  const [attaPaymentOption, setAttaPaymentOption] = useState<'FULL_CASH' | 'ADD_TO_DUE' | 'PARTIAL'>('FULL_CASH');
+  const [attaPartialAmount, setAttaPartialAmount] = useState<number>(0);
+
+  const attaRetailBill = useMemo(() => {
+    const qty = roundQuantity(generalQty || 0);
+    const rate = roundCurrency(generalRate || rates.rollAttaSellingRate || 40);
+    return roundCurrency(qty * rate);
+  }, [generalQty, generalRate, rates.rollAttaSellingRate]);
+
+  const attaEffectivePaidAmount = useMemo(() => {
+    if (attaPaymentOption === 'FULL_CASH') {
+      return attaRetailBill;
+    }
+    if (attaPaymentOption === 'ADD_TO_DUE') {
+      return 0;
+    }
+    return roundCurrency(attaPartialAmount || 0);
+  }, [attaPaymentOption, attaRetailBill, attaPartialAmount]);
+
+  const attaEffectiveDueAmount = useMemo(() => {
+    return safeSubtract(attaRetailBill, attaEffectivePaidAmount);
+  }, [attaRetailBill, attaEffectivePaidAmount]);
+
+  // Overall form validation error message (null if valid)
+  const validationError = useMemo(() => {
+    if (selectedType === TransactionType.WHEAT_ATTA_EXCHANGE) {
+      if (availableWheat <= 0) {
+        return 'Customer has no wheat available to exchange. Please deposit wheat first.';
+      }
+      if (!weWheatQty || weWheatQty <= 0) {
+        return 'Please enter a valid wheat quantity greater than 0 kg.';
+      }
+      if (weWheatQty > availableWheat) {
+        return `Customer has only ${formatKg(availableWheat)} wheat available. Please enter ${formatKg(availableWheat)} or less.`;
+      }
+      if (wePaymentOption === 'PARTIAL') {
+        const bill = weExchangeCalc.calculatedExchangeValue;
+        if (wePartialAmount <= 0 || wePartialAmount >= bill) {
+          return `Partial payment must be greater than ₹0 and less than ₹${bill}.`;
+        }
+      }
+      if (wePaymentOption === 'ADD_TO_DUE' && !selectedCustomer) {
+        return 'Please select a customer account to add balance to Khata Due.';
+      }
+    }
+
+    if (selectedType === TransactionType.ATTA_PURCHASE) {
+      const qty = roundQuantity(generalQty || 0);
+      const rate = roundCurrency(generalRate || 40);
+      const bill = roundCurrency(qty * rate);
+
+      if (qty <= 0) {
+        return 'Please enter an atta quantity greater than 0 kg.';
+      }
+      if (rate <= 0) {
+        return 'Please enter a valid selling rate greater than ₹0.';
+      }
+      if (attaPaymentOption === 'PARTIAL') {
+        if (attaPartialAmount <= 0 || attaPartialAmount >= bill) {
+          return `Partial payment must be greater than ₹0 and less than total bill (₹${bill}).`;
+        }
+      }
+      if (attaPaymentOption === 'ADD_TO_DUE' && !selectedCustomer) {
+        return 'Please select a customer account to add balance to Khata Due.';
+      }
+      if (attaPaymentOption === 'PARTIAL' && !selectedCustomer) {
+        return 'Please select a customer account for partial payment with outstanding Khata Due.';
+      }
+    }
+
+    if (selectedType === TransactionType.RICE_ATTA_SETTLEMENT) {
+      if (raSettlementCalc.settlementDirection === 'CUSTOMER_PAYS') {
+        if (raPaymentOption === 'PARTIAL') {
+          if (raPartialAmount <= 0 || raPartialAmount >= raSettlementCalc.settlementAmount) {
+            return `Partial payment must be greater than ₹0 and less than ₹${raSettlementCalc.settlementAmount}.`;
+          }
+        }
+        if (raPaymentOption === 'PENDING' && !selectedCustomer) {
+          return 'Please select a customer account to add due to Khata.';
+        }
+      } else if (raSettlementCalc.settlementDirection === 'CUSTOMER_RECEIVES') {
+        if (raPaymentOption === 'PARTIAL') {
+          if (raPartialAmount <= 0 || raPartialAmount >= raSettlementCalc.settlementAmount) {
+            return `Partial payout must be greater than ₹0 and less than ₹${raSettlementCalc.settlementAmount}.`;
+          }
+        }
+      }
+    }
+
+    return null;
+  }, [
+    selectedType,
+    availableWheat,
+    weWheatQty,
+    wePaymentOption,
+    wePartialAmount,
+    weExchangeCalc.calculatedExchangeValue,
+    selectedCustomer,
+    generalQty,
+    generalRate,
+    attaPaymentOption,
+    attaPartialAmount,
+    raSettlementCalc,
+    raPaymentOption,
+    raPartialAmount,
+  ]);
+
   // Reversal / Correction reference
   const [adjustmentReason, setAdjustmentReason] = useState<string>('');
   const [referenceTxnNumber, setReferenceTxnNumber] = useState<string>('');
@@ -478,18 +587,22 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
       setGeneralRate(0);
       setPaidAmount(0);
     } else if (selectedType === TransactionType.WHEAT_ATTA_EXCHANGE) {
-      setGeneralQty(18);
+      const defaultQty = availableWheat > 0 ? Math.min(15, availableWheat) : 15;
+      setWeWheatQty(defaultQty);
+      setGeneralQty(defaultQty);
       setGeneralRate(rates.rollAttaExchangeRate || 10);
       setGeneralAttaType(AttaType.ROLL_ATTA);
-      setPaidAmount(180);
+      setPaidAmount(defaultQty * (rates.rollAttaExchangeRate || 10));
     } else if (selectedType === TransactionType.RICE_PURCHASE) {
       setGeneralQty(20);
       setGeneralRate(rates.ricePurchaseRate || 21);
       setPaidAmount(0);
     } else if (selectedType === TransactionType.ATTA_PURCHASE) {
-      setGeneralQty(5);
+      setGeneralQty(12);
       setGeneralRate(rates.rollAttaSellingRate || 40);
-      setPaidAmount(200);
+      setAttaPaymentOption('FULL_CASH');
+      setAttaPartialAmount(0);
+      setPaidAmount(480);
     } else if (selectedType === TransactionType.CASH_PAYMENT) {
       setGeneralRate(500);
       setPaidAmount(500);
@@ -718,6 +831,9 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
     if (selectedType === TransactionType.WHEAT_ATTA_EXCHANGE) {
       return wePaidAmount;
     }
+    if (selectedType === TransactionType.ATTA_PURCHASE) {
+      return attaEffectivePaidAmount;
+    }
     if (selectedType === TransactionType.RICE_ATTA_SETTLEMENT) {
       return raSettlementCalc.effectivePaidAmount;
     }
@@ -728,7 +844,7 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
       return wcSettlementCalc.amountPaid;
     }
     return paidAmount;
-  }, [selectedType, wePaidAmount, raSettlementCalc, rcSettlementCalc, wcSettlementCalc, paidAmount]);
+  }, [selectedType, wePaidAmount, attaEffectivePaidAmount, raSettlementCalc, rcSettlementCalc, wcSettlementCalc, paidAmount]);
 
   // Determine effective notes including audit details for overrides
   const effectiveNotes = useMemo(() => {
@@ -920,12 +1036,17 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
         ? `${adjustmentReason}${referenceTxnNumber ? ` [Ref: ${referenceTxnNumber}]` : ''}`
         : effectiveNotes;
 
+      const attaPaymentStatus = attaPaymentOption === 'FULL_CASH' ? 'PAID' : attaPaymentOption === 'ADD_TO_DUE' ? 'DUE' : 'PARTIAL';
+      const attaStatus = attaPaymentOption === 'FULL_CASH' ? TransactionStatus.PAID : attaPaymentOption === 'ADD_TO_DUE' ? TransactionStatus.DUE : TransactionStatus.PARTIAL;
+
       const result = await TransactionService.createTransaction(
         {
           type: selectedType,
           customerId: selectedCustomer?.id,
           items: currentItems,
           paidAmount: calculatedSummary.paidAmount,
+          paymentStatus: selectedType === TransactionType.ATTA_PURCHASE ? attaPaymentStatus : undefined,
+          status: selectedType === TransactionType.ATTA_PURCHASE ? attaStatus : undefined,
           notes: finalNotes,
           description: calculatedSummary.itemsSummary,
         },
@@ -1321,6 +1442,22 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
          ========================================================================= */}
       {step === 'DETAILS' && (
         <div className="space-y-3">
+          {/* Top Level Immediate Validation Alert Banner */}
+          {validationError && (
+            <div
+              role="alert"
+              className="p-3.5 bg-red-50 border-2 border-red-500 text-red-900 rounded-xl flex items-start gap-2.5 shadow-sm"
+            >
+              <AlertTriangle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-red-700">Action Required</div>
+                <div className="text-xs sm:text-sm font-semibold mt-0.5">
+                  {validationError}
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Header Summary of Selection */}
           <div className="bg-white rounded-xl border border-stone-200 p-3.5 shadow-2xs flex items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
@@ -2364,11 +2501,18 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
                       kg
                     </span>
                   </div>
-                  <p className="text-[11px] text-stone-500">Maximum: {formatKg(availableWheat)}</p>
+                  <p className="text-[11px] text-stone-500">Maximum available: {formatKg(availableWheat)}</p>
                   {wheatExchangeExceedsBalance && (
-                    <p className="text-xs font-semibold text-red-700" role="alert">
-                      Customer has only {formatKg(availableWheat)} wheat available.
-                    </p>
+                    <div className="p-2.5 bg-red-50 border border-red-300 rounded-lg text-xs font-semibold text-red-700 flex items-center gap-1.5" role="alert">
+                      <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+                      <span>Customer has only {formatKg(availableWheat)} wheat available. Please enter {formatKg(availableWheat)} or less.</span>
+                    </div>
+                  )}
+                  {availableWheat <= 0 && (
+                    <div className="p-2.5 bg-amber-50 border border-amber-300 rounded-lg text-xs font-semibold text-amber-900 flex items-center gap-1.5" role="alert">
+                      <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                      <span>Customer has no wheat available to exchange. Please deposit wheat first.</span>
+                    </div>
                   )}
 
                   {/* Quick Preset Buttons */}
@@ -2648,12 +2792,239 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
               </div>
             )}
 
-            {/* SPECIFIC CASE 5: GENERIC SINGLE QUANTITY/RATE (Atta Purchase, Rice Purchase, etc.) */}
+            {/* SPECIFIC CASE: ATTA_PURCHASE (Direct Retail Flour Sale with 3 Payment Modes) */}
+            {selectedType === TransactionType.ATTA_PURCHASE && (
+              <div className="space-y-4">
+                {/* 1. Atta Quantity & Selling Rate */}
+                <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-stone-800 uppercase tracking-wider">
+                      1. Retail Atta Quantity & Rate
+                    </label>
+                    <span className="text-[11px] font-mono text-stone-500">Shop Outflow</span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                        Quantity (kg) *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="0.5"
+                          min="0.5"
+                          value={generalQty || ''}
+                          onChange={(e) => setGeneralQty(parseFloat(e.target.value) || 0)}
+                          placeholder="e.g. 12"
+                          className="w-full pl-3 pr-10 py-2.5 bg-white border border-stone-300 rounded-xl text-base font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400">
+                          kg
+                        </span>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                        Rate (₹/kg) *
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          value={generalRate || ''}
+                          onChange={(e) => setGeneralRate(parseFloat(e.target.value) || 0)}
+                          placeholder="40"
+                          className="w-full pl-3 pr-14 py-2.5 bg-white border border-stone-300 rounded-xl text-base font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-bold text-stone-400 font-mono">
+                          ₹/kg
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Quick Quantity Presets */}
+                  <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
+                    <span className="text-[10px] uppercase font-bold text-stone-400 mr-0.5">Presets:</span>
+                    {[2, 5, 10, 12, 15, 20].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => setGeneralQty(preset)}
+                        className={`px-2.5 py-1 rounded-md text-xs font-mono font-bold transition-all cursor-pointer ${
+                          generalQty === preset
+                            ? 'bg-emerald-800 text-white shadow-2xs'
+                            : 'bg-white hover:bg-stone-200 text-stone-700 border border-stone-300'
+                        }`}
+                      >
+                        {preset} kg
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Total Retail Bill Card */}
+                <div className="p-3.5 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-stone-600 font-medium">Total Bill Amount:</span>
+                    <span className="font-mono font-extrabold text-emerald-950 text-lg">
+                      {formatRupees(attaRetailBill)}
+                    </span>
+                  </div>
+                  <div className="text-[11px] text-emerald-800 flex items-center justify-between">
+                    <span>{formatKg(generalQty || 0)} × ₹{generalRate || 40}/kg</span>
+                    <span className="font-bold">Customer Owes Shop</span>
+                  </div>
+                </div>
+
+                {/* 2. Payment Options (Full Cash, Add to Khata Due, Partial Payment) */}
+                <div className="p-3.5 bg-stone-50 rounded-xl border border-stone-200 space-y-2.5">
+                  <label className="text-xs font-bold text-stone-800 uppercase tracking-wider block">
+                    2. Payment Settlement Mode *
+                  </label>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                    {/* Full Cash Paid */}
+                    <button
+                      type="button"
+                      onClick={() => setAttaPaymentOption('FULL_CASH')}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        attaPaymentOption === 'FULL_CASH'
+                          ? 'bg-emerald-50 border-emerald-500 font-bold text-emerald-950 ring-1 ring-emerald-400'
+                          : 'bg-white hover:bg-stone-50 border-stone-200 text-stone-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs block font-bold">Full Cash Paid</span>
+                        {attaPaymentOption === 'FULL_CASH' && (
+                          <Check className="w-3.5 h-3.5 text-emerald-700" />
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-emerald-800 block mt-0.5">
+                        {formatRupees(attaRetailBill)} (PAID)
+                      </span>
+                    </button>
+
+                    {/* Add to Khata Due */}
+                    <button
+                      type="button"
+                      onClick={() => setAttaPaymentOption('ADD_TO_DUE')}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        attaPaymentOption === 'ADD_TO_DUE'
+                          ? 'bg-rose-50 border-rose-500 font-bold text-rose-950 ring-1 ring-rose-400'
+                          : 'bg-white hover:bg-stone-50 border-stone-200 text-stone-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs block font-bold">Add to Khata Due</span>
+                        {attaPaymentOption === 'ADD_TO_DUE' && (
+                          <Check className="w-3.5 h-3.5 text-rose-700" />
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-rose-800 block mt-0.5">
+                        Due: {formatRupees(attaRetailBill)}
+                      </span>
+                    </button>
+
+                    {/* Partial Payment */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttaPaymentOption('PARTIAL');
+                        if (!attaPartialAmount || attaPartialAmount >= attaRetailBill) {
+                          setAttaPartialAmount(Math.floor(attaRetailBill / 2));
+                        }
+                      }}
+                      className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                        attaPaymentOption === 'PARTIAL'
+                          ? 'bg-amber-50 border-amber-500 font-bold text-amber-950 ring-1 ring-amber-400'
+                          : 'bg-white hover:bg-stone-50 border-stone-200 text-stone-700'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs block font-bold">Partial Payment</span>
+                        {attaPaymentOption === 'PARTIAL' && (
+                          <Check className="w-3.5 h-3.5 text-amber-700" />
+                        )}
+                      </div>
+                      <span className="text-[11px] font-mono text-amber-800 block mt-0.5">
+                        Cash + Khata Due
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* Partial Payment Input Field */}
+                  {attaPaymentOption === 'PARTIAL' && (
+                    <div className="p-3 bg-white rounded-xl border border-amber-200 space-y-2 mt-2">
+                      <div>
+                        <label className="text-[11px] font-bold text-stone-700 block mb-1">
+                          Amount Paid in Cash Now (₹) *
+                        </label>
+                        <input
+                          type="number"
+                          step="1"
+                          min="1"
+                          max={Math.max(1, attaRetailBill - 1)}
+                          value={attaPartialAmount || ''}
+                          onChange={(e) => setAttaPartialAmount(parseFloat(e.target.value) || 0)}
+                          placeholder="e.g. 300"
+                          className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-sm font-mono font-bold text-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        />
+                      </div>
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-stone-100">
+                        <span className="text-stone-600">Remaining Khata Due:</span>
+                        <span className="font-mono font-bold text-rose-700">
+                          {formatRupees(attaEffectiveDueAmount)}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Summary of payment choice */}
+                  <div className="p-2.5 bg-white rounded-lg border border-stone-200 text-xs flex items-center justify-between">
+                    <span className="text-stone-600">Payment Status:</span>
+                    <span className={`font-bold font-mono ${
+                      attaPaymentOption === 'FULL_CASH'
+                        ? 'text-emerald-700'
+                        : attaPaymentOption === 'ADD_TO_DUE'
+                        ? 'text-rose-700'
+                        : 'text-amber-700'
+                    }`}>
+                      {attaPaymentOption === 'FULL_CASH'
+                        ? `PAID (Cash: ${formatRupees(attaRetailBill)})`
+                        : attaPaymentOption === 'ADD_TO_DUE'
+                        ? `DUE (Total Due: ${formatRupees(attaRetailBill)})`
+                        : `PARTIAL (Paid: ${formatRupees(attaEffectivePaidAmount)}, Due: ${formatRupees(attaEffectiveDueAmount)})`}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Optional Notes */}
+                <div>
+                  <label className="text-xs font-bold text-stone-700 block mb-1">
+                    Notes
+                  </label>
+                  <input
+                    type="text"
+                    value={notes}
+                    onChange={(e) => setNotes(e.target.value)}
+                    placeholder="Optional notes or remarks"
+                    className="w-full px-3 py-2 bg-stone-50 border border-stone-300 rounded-lg text-xs text-stone-900"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* SPECIFIC CASE 5: GENERIC SINGLE QUANTITY/RATE (Rice Purchase, etc.) */}
             {selectedType !== TransactionType.RICE_ATTA_SETTLEMENT &&
               selectedType !== TransactionType.RICE_CASH_SETTLEMENT &&
               selectedType !== TransactionType.WHEAT_CASH_SETTLEMENT &&
               selectedType !== TransactionType.WHEAT_DEPOSIT &&
               selectedType !== TransactionType.WHEAT_ATTA_EXCHANGE &&
+              selectedType !== TransactionType.ATTA_PURCHASE &&
               selectedType !== TransactionType.CASH_PAYMENT &&
               selectedType !== TransactionType.CORRECTION &&
               selectedType !== TransactionType.REVERSAL && (
@@ -2778,19 +3149,26 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
           </div>
 
           {/* Action to Review Step */}
-          <div className="pt-2">
+          <div className="pt-2 space-y-1.5">
             <Button
               variant="primary"
               size="lg"
+              disabled={Boolean(validationError)}
               onClick={() => {
+                if (validationError) return;
                 setIdempotencyKey(`idem-${Date.now()}-${Math.random().toString(36).substr(2, 6)}`);
                 setStep('CONFIRM');
               }}
-              className="w-full"
+              className={`w-full ${Boolean(validationError) ? 'opacity-50 cursor-not-allowed' : ''}`}
               rightIcon={<ChevronRight className="w-4 h-4" />}
             >
               Review & Confirm
             </Button>
+            {validationError && (
+              <p className="text-[11px] text-center text-red-600 font-semibold" role="alert">
+                {validationError}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -2836,6 +3214,47 @@ export const MobileNewTransactionView: React.FC<MobileNewTransactionViewProps> =
                 <span className="font-mono text-stone-700">{new Date().toLocaleDateString('en-IN')}</span>
               </div>
             </div>
+
+            {/* Specialized Atta Purchase Review Box */}
+            {selectedType === TransactionType.ATTA_PURCHASE && (
+              <div className="p-3.5 bg-emerald-50/80 rounded-xl border border-emerald-300 space-y-2 text-xs">
+                <div className="flex items-center justify-between text-emerald-950">
+                  <span className="font-bold flex items-center gap-1.5">
+                    <Wheat className="w-4 h-4 text-emerald-700" />
+                    Direct Atta Retail Sale
+                  </span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded border ${
+                    attaPaymentOption === 'FULL_CASH'
+                      ? 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                      : attaPaymentOption === 'ADD_TO_DUE'
+                      ? 'bg-rose-100 text-rose-900 border-rose-300'
+                      : 'bg-amber-100 text-amber-900 border-amber-300'
+                  }`}>
+                    Payment: {attaPaymentOption === 'FULL_CASH' ? 'PAID' : attaPaymentOption === 'ADD_TO_DUE' ? 'DUE' : 'PARTIAL'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 text-stone-700 pt-1">
+                  <div className="p-2 bg-white rounded-lg border border-emerald-200">
+                    <span className="text-stone-500 block text-[10px] uppercase font-bold">Atta Sold</span>
+                    <span className="font-mono font-bold text-stone-900">{formatKg(generalQty || 0)}</span>
+                    <span className="text-[10px] text-stone-500 font-medium block">Rate: ₹{generalRate || 40}/kg</span>
+                  </div>
+                  <div className="p-2 bg-white rounded-lg border border-emerald-200">
+                    <span className="text-stone-500 block text-[10px] uppercase font-bold">Total Bill</span>
+                    <span className="font-mono font-bold text-emerald-950">{formatRupees(attaRetailBill)}</span>
+                    <span className="text-[10px] text-emerald-800 font-medium block">
+                      Paid: {formatRupees(attaEffectivePaidAmount)}
+                    </span>
+                  </div>
+                </div>
+                {attaEffectiveDueAmount > 0 && (
+                  <div className="p-2 bg-rose-50 rounded-lg border border-rose-200 text-rose-900 flex items-center justify-between">
+                    <span className="font-medium">Added to Customer Khata Due:</span>
+                    <span className="font-mono font-bold">{formatRupees(attaEffectiveDueAmount)}</span>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Specialized Wheat -> Atta Exchange Review Box */}
             {selectedType === TransactionType.WHEAT_ATTA_EXCHANGE && (

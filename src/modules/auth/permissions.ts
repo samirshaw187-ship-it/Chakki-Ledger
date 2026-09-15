@@ -120,7 +120,38 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.MANAGE_USERS,
     Permission.VIEW_AUDIT_LOGS,
     Permission.EXPORT_BACKUP,
+    Permission.SYSTEM_SETTINGS,
+  ],
+  [UserRole.ADMIN]: [
+    Permission.VIEW_COUNTER,
+    Permission.CREATE_TRANSACTION,
+    Permission.VIEW_TRANSACTIONS,
+    Permission.CORRECT_TRANSACTION,
+    Permission.REVERSE_TRANSACTION,
+    Permission.VIEW_CUSTOMERS,
+    Permission.CREATE_CUSTOMER,
+    Permission.EDIT_CUSTOMER,
+    Permission.RECORD_PAYMENT,
+    Permission.VIEW_RECEIPTS,
+    Permission.VIEW_MILLING,
+    Permission.MANAGE_RICE_TRADING,
+    Permission.VIEW_RICE_TRADING,
+    Permission.CREATE_WHOLESALE_SALE,
+    Permission.CREATE_WHOLESALER,
+    Permission.VIEW_WHOLESALERS,
+    Permission.MANAGE_WHOLESALERS,
+    Permission.VIEW_INVENTORY,
+    Permission.ADJUST_INVENTORY,
+    Permission.VIEW_FINANCIAL_REPORTS,
+    Permission.VIEW_AI_INSIGHTS,
+    Permission.SETTINGS_VIEW,
+    Permission.SETTINGS_MANAGE,
+    Permission.RATE_MANAGE,
+    Permission.COSTING_MANAGE,
+    Permission.INVENTORY_CONFIG_MANAGE,
+    Permission.RECEIPT_CONFIG_MANAGE,
     Permission.BACKUP_VIEW,
+    Permission.BACKUP_CREATE,
     Permission.EXPORT_CUSTOMERS,
     Permission.EXPORT_TRANSACTIONS,
     Permission.EXPORT_LEDGER,
@@ -129,42 +160,17 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.EXPORT_RICE_TRADING,
     Permission.EXPORT_WHOLESALERS,
     Permission.EXPORT_FINANCIAL_REPORTS,
-    Permission.SYSTEM_SETTINGS,
-  ],
-  [UserRole.STAFF]: [
-    Permission.VIEW_COUNTER,
-    Permission.CREATE_TRANSACTION,
-    Permission.VIEW_TRANSACTIONS,
-    Permission.VIEW_CUSTOMERS,
-    Permission.CREATE_CUSTOMER,
-    Permission.RECORD_PAYMENT,
-    Permission.VIEW_RECEIPTS,
-    Permission.VIEW_MILLING,
-    Permission.VIEW_INVENTORY,
-    Permission.VIEW_RICE_TRADING,
+    Permission.RESTORE_DATA,
     Permission.VIEW_LEDGER,
-  ],
-  [UserRole.ACCOUNTANT]: [
-    Permission.VIEW_CUSTOMERS,
-    Permission.VIEW_TRANSACTIONS,
-    Permission.VIEW_RECEIPTS,
-    Permission.CORRECT_TRANSACTION,
-    Permission.REVERSE_TRANSACTION,
-    Permission.VIEW_LEDGER,
-    Permission.VIEW_WHOLESALERS,
-    Permission.VIEW_RICE_TRADING,
-    Permission.CREATE_WHOLESALE_SALE,
-    Permission.VIEW_RICE_TRADING,
-    Permission.VIEW_INVENTORY,
-    Permission.VIEW_FINANCIAL_REPORTS,
-    Permission.VIEW_ANALYTICS,
-    Permission.VIEW_AI_INSIGHTS,
-    Permission.SETTINGS_VIEW,
     Permission.MANAGE_DAILY_CLOSING,
     Permission.VIEW_EXPENSES,
     Permission.MANAGE_EXPENSES,
+    Permission.VIEW_ANALYTICS,
+    Permission.MANAGE_RATES,
+    Permission.MANAGE_USERS,
     Permission.VIEW_AUDIT_LOGS,
     Permission.EXPORT_BACKUP,
+    Permission.SYSTEM_SETTINGS,
   ],
 };
 
@@ -172,8 +178,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
  * Check if a role possesses a specific permission
  */
 export function hasPermission(role: UserRole, permission: Permission): boolean {
-  if (role === UserRole.OWNER) return true;
-  const permissions = ROLE_PERMISSIONS[role] || [];
+  const permissions = ROLE_PERMISSIONS[role] as readonly Permission[] | undefined;
+  if (!permissions) return false;
   return permissions.includes(permission);
 }
 
@@ -222,7 +228,7 @@ export const ROUTE_PERMISSION_MAP: Record<string, Permission> = {
  * Check if a role has access to a given route path
  */
 export function canAccessRoute(path: string, role: UserRole): boolean {
-  if (role === UserRole.OWNER) return true;
+  if (role === UserRole.OWNER || role === UserRole.ADMIN) return true;
 
   // Exact match
   if (ROUTE_PERMISSION_MAP[path]) {
@@ -254,6 +260,8 @@ export interface RoleMetadata {
   badgeClass: string;
   defaultPath: string;
   description: string;
+  defaultEmail: string;
+  demoPassword: string;
   demoPin: string;
 }
 
@@ -261,28 +269,23 @@ export const ROLE_METADATA: Record<UserRole, RoleMetadata> = {
   [UserRole.OWNER]: {
     role: UserRole.OWNER,
     title: 'Shop Owner',
-    subtitle: 'Full Administrative & Financial Authority',
+    subtitle: 'Full Business, Counter & Financial Oversight',
     badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
     defaultPath: '/app/home',
-    description: 'Complete unrestricted access across mobile counter, wholesale grain trading, rates configuration, user roles, and audit trail.',
+    description: 'Complete unrestricted authority across shop counter, wholesale grain trading, rates configuration, personnel accounts, and audit log.',
+    defaultEmail: 'owner@gmail.com',
+    demoPassword: 'Owner@1234',
     demoPin: '1234',
   },
-  [UserRole.STAFF]: {
-    role: UserRole.STAFF,
-    title: 'Counter Operator (Staff)',
-    subtitle: 'Daily Mill Transactions & Weighing',
-    badgeClass: 'bg-amber-100 text-amber-900 border-amber-300',
-    defaultPath: '/app/home',
-    description: 'Fast entry for customer wheat deposits, atta collections, rice purchases, and cash payments. Cannot modify rates or user permissions.',
-    demoPin: '5678',
-  },
-  [UserRole.ACCOUNTANT]: {
-    role: UserRole.ACCOUNTANT,
-    title: 'Accountant',
-    subtitle: 'Audit, Ledger & Financial Statements',
+  [UserRole.ADMIN]: {
+    role: UserRole.ADMIN,
+    title: 'Administrator',
+    subtitle: 'System Administration, Operations & Accounting',
     badgeClass: 'bg-sky-100 text-sky-900 border-sky-300',
     defaultPath: '/admin/dashboard',
-    description: 'Detailed access to daily closing register, financial reports, audit logs, and customer khata balances. Cannot change milling rates or operators.',
+    description: 'Full administrative access to financial ledger, audit logs, customer khata balances, inventory adjustments, and system settings.',
+    defaultEmail: 'samirpc187@gmail.com',
+    demoPassword: 'samirCL@2025',
     demoPin: '9988',
   },
 };

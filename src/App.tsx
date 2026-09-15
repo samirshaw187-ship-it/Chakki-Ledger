@@ -51,9 +51,9 @@ function MainApp() {
   const [currentPath, setCurrentPath] = useState<string>('/app/home');
   const [isMobileLayout, setIsMobileLayout] = useState<boolean>(true);
 
-  // Synchronize layout mode if role defaults to desktop (e.g. Accountant)
+  // Synchronize layout mode if role defaults to desktop (e.g. Admin)
   useEffect(() => {
-    if (activeRole === UserRole.ACCOUNTANT && currentPath === '/app/home') {
+    if (activeRole === UserRole.ADMIN && currentPath === '/app/home') {
       setIsMobileLayout(false);
       setCurrentPath('/admin/dashboard');
     }
@@ -103,7 +103,7 @@ function MainApp() {
     return (
       <LoginView
         onLoginSuccess={(loggedRole) => {
-          if (loggedRole === UserRole.ACCOUNTANT) {
+          if (loggedRole === UserRole.ADMIN) {
             setIsMobileLayout(false);
             setCurrentPath('/admin/dashboard');
           } else {

@@ -14,7 +14,7 @@ export interface AuthContextType {
   session: AuthSession | null;
   role: UserRole;
   isAuthenticated: boolean;
-  login: (phone: string, pin: string) => Promise<LoginResult>;
+  login: (email: string, password: string) => Promise<LoginResult>;
   loginAsRole: (role: UserRole) => void;
   logout: () => void;
   can: (permission: Permission) => boolean;
@@ -27,6 +27,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<AuthSession | null>(() => AuthService.getSession());
 
   useEffect(() => {
+    // Initialize Firebase Auth listener and cloud Firestore sync
+    AuthService.initAuthListener();
+
     // Subscribe to AuthService changes (persisted logins, logouts, switches)
     const unsubscribe = AuthService.subscribe((updatedSession) => {
       setSession(updatedSession);
@@ -34,8 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  const login = async (phone: string, pin: string): Promise<LoginResult> => {
-    const result = AuthService.login(phone, pin);
+  const login = async (email: string, password: string): Promise<LoginResult> => {
+    const result = await AuthService.login(email, password);
     if (result.success && result.session) {
       setSession(result.session);
     }
@@ -52,7 +55,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setSession(null);
   };
 
-  const role = session?.role || UserRole.STAFF;
+  const role = session?.role || UserRole.OWNER;
   const user = session?.user || null;
   const isAuthenticated = session !== null;
 

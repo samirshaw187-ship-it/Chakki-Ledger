@@ -1,8 +1,8 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { SummaryCard } from '../components/domain/SummaryCard';
 import { TransactionCard } from '../components/domain/TransactionCard';
-import { Plus, ArrowRight, IndianRupee, Wheat, ShoppingBag, AlertCircle } from 'lucide-react';
-import { Transaction } from '../types';
+import { Plus, ArrowRight, IndianRupee, Wheat, ShoppingBag, AlertCircle, Receipt } from 'lucide-react';
+import { Transaction, Customer } from '../types';
 import { dbRepository } from '../db/in-memory-db';
 
 export interface MobileHomeViewProps {
@@ -11,6 +11,17 @@ export interface MobileHomeViewProps {
 }
 
 export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, userName }) => {
+  const [transactions, setTransactions] = useState<Transaction[]>(() => dbRepository.getTransactions());
+  const [customers, setCustomers] = useState<Customer[]>(() => dbRepository.getCustomers());
+
+  useEffect(() => {
+    const unsub = dbRepository.subscribe(() => {
+      setTransactions([...dbRepository.getTransactions()]);
+      setCustomers([...dbRepository.getCustomers()]);
+    });
+    return unsub;
+  }, []);
+
   // Dynamic greeting based on current time
   const currentHour = new Date().getHours();
   const greeting =
@@ -23,16 +34,34 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
     year: 'numeric',
   });
 
-  // Sample illustrative summary metrics for Home Page (clearly isolated demo values as requested)
-  const sampleMetrics = {
-    todaySales: '₹4,820',
-    wheatReceived: '185 kg',
-    ricePurchased: '64 kg',
-    customerDue: '₹1,420',
-  };
+  // Calculate real live metrics from repository
+  const todayStr = new Date().toISOString().slice(0, 10);
+  
+  const todayTransactions = transactions.filter((t) => (t.date || t.createdAt || '').slice(0, 10) === todayStr);
 
-  // Transactions from repository
-  const sampleTransactions: Transaction[] = dbRepository.getTransactions();
+  const todaySalesVal = todayTransactions.reduce((acc, t) => {
+    const amt = (t as any).totalAmount || (t as any).amount || (t as any).netAmount || 0;
+    return acc + amt;
+  }, 0);
+
+  const todayWheatVal = todayTransactions.reduce((acc, t) => {
+    const wheatKg = (t as any).wheatInput || (t as any).wheatDepositedKg || (t as any).quantity || 0;
+    return acc + (typeof wheatKg === 'number' ? wheatKg : parseFloat(wheatKg) || 0);
+  }, 0);
+
+  const todayRiceVal = todayTransactions.reduce((acc, t) => {
+    const riceKg = (t as any).riceQuantity || (t as any).ricePurchasedKg || 0;
+    return acc + (typeof riceKg === 'number' ? riceKg : parseFloat(riceKg) || 0);
+  }, 0);
+
+  const totalCustomerDueVal = customers.reduce((acc, c) => acc + (c.currentDue || 0), 0);
+
+  const liveMetrics = {
+    todaySales: `₹${todaySalesVal.toLocaleString('en-IN')}`,
+    wheatReceived: `${todayWheatVal.toLocaleString('en-IN')} kg`,
+    ricePurchased: `${todayRiceVal.toLocaleString('en-IN')} kg`,
+    customerDue: `₹${totalCustomerDueVal.toLocaleString('en-IN')}`,
+  };
 
   return (
     <div className="space-y-4">
@@ -70,7 +99,7 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
         </button>
       </div>
 
-      {/* 3. Small Summary Cards (2x2 Grid) */}
+      {/* 3. Real Live Summary Cards (2x2 Grid) */}
       <div className="space-y-1.5">
         <p className="text-xs font-bold text-stone-600 uppercase tracking-wider px-1">
           Today's Register Snapshot
@@ -78,7 +107,7 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
         <div className="grid grid-cols-2 gap-2 sm:gap-2.5">
           <SummaryCard
             label="Today's Sales"
-            value={sampleMetrics.todaySales}
+            value={liveMetrics.todaySales}
             subtext="Cash & UPI collected"
             icon={IndianRupee}
             variant="emerald"
@@ -86,7 +115,7 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
           />
           <SummaryCard
             label="Wheat Received"
-            value={sampleMetrics.wheatReceived}
+            value={liveMetrics.wheatReceived}
             subtext="Deposit for milling"
             icon={Wheat}
             variant="amber"
@@ -94,7 +123,7 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
           />
           <SummaryCard
             label="Rice Purchased"
-            value={sampleMetrics.ricePurchased}
+            value={liveMetrics.ricePurchased}
             subtext="From ration cards"
             icon={ShoppingBag}
             variant="stone"
@@ -102,7 +131,7 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
           />
           <SummaryCard
             label="Customer Due"
-            value={sampleMetrics.customerDue}
+            value={liveMetrics.customerDue}
             subtext="Pending khata balance"
             icon={AlertCircle}
             variant="red"
@@ -111,7 +140,7 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
         </div>
       </div>
 
-      {/* 4. Recent Transactions List (5-8 Sample Cards) */}
+      {/* 4. Recent Transactions List */}
       <div className="space-y-2 pt-1">
         <div className="flex items-center justify-between px-1">
           <p className="text-xs font-bold text-stone-700 uppercase tracking-wider">
@@ -126,15 +155,27 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
           </button>
         </div>
 
-        <div className="space-y-2.5">
-          {sampleTransactions.map((tx) => (
-            <TransactionCard
-              key={tx.id}
-              transaction={tx}
-              onClick={() => onNavigate(`/app/transactions/${tx.id}`)}
-            />
-          ))}
-        </div>
+        {transactions.length > 0 ? (
+          <div className="space-y-2.5">
+            {transactions.slice(0, 10).map((tx) => (
+              <TransactionCard
+                key={tx.id}
+                transaction={tx}
+                onClick={() => onNavigate(`/app/transactions/${tx.id}`)}
+              />
+            ))}
+          </div>
+        ) : (
+          <div className="bg-white rounded-2xl p-6 border border-stone-200 text-center space-y-2 shadow-2xs">
+            <div className="w-10 h-10 rounded-xl bg-stone-100 flex items-center justify-center mx-auto text-stone-400">
+              <Receipt className="w-5 h-5" />
+            </div>
+            <p className="text-xs font-semibold text-stone-800">No Transactions Recorded Yet</p>
+            <p className="text-[11px] text-stone-500 max-w-xs mx-auto">
+              Your register is fresh and ready. Tap "+ New Transaction" above to record milling, wheat deposits, or payments.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

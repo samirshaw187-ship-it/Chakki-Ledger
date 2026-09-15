@@ -46,19 +46,19 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
             <span className="text-[11px] font-semibold text-stone-500 px-2 hidden lg:inline">
               Role:
             </span>
-            {(['OWNER', 'STAFF', 'ACCOUNTANT'] as UserRole[]).map((role) => (
+            {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
               <button
                 key={role}
                 type="button"
                 onClick={() => onRoleChange(role)}
-                title={`Switch active test session to ${role}`}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
+                title={`Switch active session to ${role}`}
+                className={`px-2.5 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
                   activeRole === role
                     ? 'bg-white text-stone-900 shadow-xs font-bold'
                     : 'text-stone-600 hover:text-stone-900'
                 }`}
               >
-                {role === 'OWNER' ? 'Owner' : role === 'STAFF' ? 'Staff' : 'Accountant'}
+                {role === UserRole.OWNER ? 'Shop Owner' : 'Administrator'}
               </button>
             ))}
           </div>

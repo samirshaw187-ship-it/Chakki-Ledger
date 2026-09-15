@@ -1,0 +1,12 @@
+{
+  "projectId": "chakki-ledger",
+  "appId": "1:640995533932:web:7c713435ede46b8a1c2449",
+  "apiKey": "AIzaSyDm3PF5LLtuPtKljmpvfudec5RLTgk0A7I",
+  "authDomain": "chakki-ledger.firebaseapp.com",
+  "firestoreDatabaseId": "ai-studio-chakkiledger-26437446-f42d-47b4-8e32-0b97ec4df365",
+  "storageBucket": "chakki-ledger.firebasestorage.app",
+  "messagingSenderId": "640995533932",
+  "measurementId": "",
+  "oAuthClientId": "640995533932-bdnisl9fnb45eh0vrenkrqgjedfk7afq.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
+}

@@ -12,7 +12,7 @@
  * - Verify user role permissions
  */
 
-import { SettlementPaymentStatus, TransactionType, UserRole } from '../types';
+import { SettlementPaymentStatus, TransactionStatus, TransactionType, UserRole } from '../types';
 import { dbRepository } from '../db/in-memory-db';
 import { TRANSACTION_DEFINITIONS, TransactionItemInput } from '../modules/transactions/definitions';
 import { roundCurrency, roundQuantity } from '../utils/precision';
@@ -23,7 +23,8 @@ export interface CreateTransactionDTO {
   customerId?: string;
   items: TransactionItemInput[];
   paidAmount?: number;
-  paymentStatus?: SettlementPaymentStatus | 'CALCULATED' | 'PENDING' | 'PAID' | 'PARTIAL';
+  paymentStatus?: SettlementPaymentStatus | 'CALCULATED' | 'PENDING' | 'PAID' | 'PARTIAL' | 'DUE';
+  status?: TransactionStatus;
   notes?: string;
   description?: string;
   date?: string;
@@ -156,10 +157,15 @@ export class TransactionValidationService {
 
       if (dto.customerId && wheatQty > 0) {
         const availableWheat = LedgerService.calculateCustomerBalances(dto.customerId).wheatBalanceKg;
-        if (wheatQty > availableWheat) {
+        if (availableWheat <= 0) {
           errors.push({
             field: 'wheatQuantity',
-            message: `Customer has only ${availableWheat} kg wheat available.`,
+            message: 'Customer has no wheat available to exchange. Please deposit wheat first.',
+          });
+        } else if (wheatQty > availableWheat) {
+          errors.push({
+            field: 'wheatQuantity',
+            message: `Customer has only ${availableWheat} kg wheat available. Please enter ${availableWheat} kg or less.`,
           });
         }
       }
@@ -196,7 +202,47 @@ export class TransactionValidationService {
       }
     }
 
-    // 6. Correction / Reversal mandatory reason
+    // 6. Special Validation Rules for ATTA_PURCHASE
+    if (dto.type === TransactionType.ATTA_PURCHASE) {
+      const item = dto.items[0];
+      const qty = item ? roundQuantity(item.quantity || 0) : 0;
+      const rate = item ? roundCurrency(item.ratePerUnit || 0) : 0;
+      const bill = roundCurrency(qty * rate);
+
+      if (qty <= 0) {
+        errors.push({
+          field: 'quantity',
+          message: 'Atta quantity must be greater than 0.',
+        });
+      }
+      if (rate <= 0) {
+        errors.push({
+          field: 'ratePerUnit',
+          message: 'Selling rate must be greater than 0.',
+        });
+      }
+
+      if (dto.paymentStatus === 'PARTIAL') {
+        const paid = typeof dto.paidAmount === 'number' ? dto.paidAmount : 0;
+        if (paid <= 0 || paid >= bill) {
+          errors.push({
+            field: 'paidAmount',
+            message: `For Partial Payment, amount paid must be greater than ₹0 and less than the bill (₹${bill}).`,
+          });
+        }
+      }
+
+      if (dto.paymentStatus === 'DUE' || (dto.paidAmount !== undefined && dto.paidAmount < bill)) {
+        if (!dto.customerId) {
+          errors.push({
+            field: 'customerId',
+            message: 'Customer account is required when adding balance to Khata Due.',
+          });
+        }
+      }
+    }
+
+    // 7. Correction / Reversal mandatory reason
     if (isAdjustment) {
       const reason = dto.notes || dto.description;
       if (!reason || reason.trim().length < 4) {
@@ -207,7 +253,7 @@ export class TransactionValidationService {
       }
     }
 
-    // 7. Paid amount check
+    // 8. Paid amount check
     if (typeof dto.paidAmount === 'number' && dto.paidAmount < 0) {
       errors.push({
         field: 'paidAmount',

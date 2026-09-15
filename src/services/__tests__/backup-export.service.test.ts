@@ -4,7 +4,7 @@ import { SEED_USERS } from '../../db/seed-data';
 import { BackupExportService } from '../backup-export.service';
 
 const owner = SEED_USERS.find((user) => user.role === 'OWNER')!;
-const staff = SEED_USERS.find((user) => user.role === 'STAFF')!;
+const unauthorizedUser = { id: 'usr-unauth', name: 'Unauthorized', role: 'UNAUTHORIZED' as any, email: 'unauth@gmail.com', isActive: true } as any;
 
 const customerCount = dbRepository.getCustomers().length;
 const transactionCount = dbRepository.getTransactions().length;
@@ -27,7 +27,7 @@ assert.equal(dbRepository.getCustomers().length, customerCount);
 assert.equal(dbRepository.getTransactions().length, transactionCount);
 
 assert.throws(
-  () => BackupExportService.generateExport({ kind: 'RICE_PROFIT', format: 'CSV', actor: staff }),
+  () => BackupExportService.generateExport({ kind: 'RICE_PROFIT', format: 'CSV', actor: unauthorizedUser }),
   /permission/i,
 );
 

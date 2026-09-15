@@ -43,7 +43,7 @@ export const AccessDenied: React.FC<AccessDeniedProps> = ({
           onClick={() => onNavigate(fallbackPath)}
           leftIcon={<ArrowLeft className="w-4 h-4" />}
         >
-          Return to {activeRole === UserRole.ACCOUNTANT ? 'Admin Dashboard' : 'Shop Counter'}
+          Return to {activeRole === UserRole.ADMIN ? 'Admin Dashboard' : 'Shop Counter'}
         </Button>
       </div>
     </div>

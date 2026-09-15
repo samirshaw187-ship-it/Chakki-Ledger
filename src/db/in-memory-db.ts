@@ -41,8 +41,19 @@ import {
 } from './seed-data';
 import { DEFAULT_RATE_CONFIGURATION } from '../config/business.config';
 import { AuditService } from '../services/audit.service';
+import {
+  syncUserToFirestore,
+  syncCustomerToFirestore,
+  syncTransactionToFirestore,
+  syncPaymentToFirestore,
+  syncWholesalerToFirestore,
+  syncLedgerEntryToFirestore,
+  syncSettingsToFirestore,
+  syncDeleteCustomerFromFirestore,
+} from '../services/firestore-dispatcher';
 
 class InMemoryDatabase {
+  private changeListeners: Set<() => void> = new Set();
   private users: User[] = [...SEED_USERS];
   private customers: Customer[] = [...SEED_CUSTOMERS];
   private transactions: Transaction[] = [...SEED_SAMPLE_TRANSACTIONS];
@@ -88,15 +99,33 @@ class InMemoryDatabase {
   }
 
   constructor() {
+    this.purgePrototypeData();
     // Initial audit log
     AuditService.log({
       action: 'SYSTEM' as any,
       entityType: 'DATABASE',
       entityId: 'init',
-      performedById: 'user-owner-01',
-      performedByName: 'Gopal Sahu (Owner)',
-      reason: 'Database foundation initialized with seed records',
+      performedById: 'system',
+      performedByName: 'Chakki Ledger System',
+      reason: 'Database foundation initialized with clean production records',
     });
+  }
+
+  public purgePrototypeData(): void {
+    const PROTOTYPE_IDS = new Set([
+      'cust-01', 'cust-02', 'cust-03', 'cust-04', 'cust-05',
+      'tx-001', 'tx-002', 'tx-003', 'tx-004', 'tx-005',
+      'pmt-001', 'pmt-002', 'pmt-003', 'pmt-004', 'pmt-005',
+      'wholesaler-01', 'wholesaler-02', 'ws-01', 'ws-02',
+      'user-owner-01',
+      'led-001', 'led-002', 'led-003', 'led-004', 'led-005', 'led-006', 'led-007', 'led-008', 'led-009',
+    ]);
+    this.customers = this.customers.filter((c) => !PROTOTYPE_IDS.has(c.id));
+    this.transactions = this.transactions.filter((t) => !PROTOTYPE_IDS.has(t.id));
+    this.payments = this.payments.filter((p) => !PROTOTYPE_IDS.has(p.id));
+    this.wholesalers = this.wholesalers.filter((w) => !PROTOTYPE_IDS.has(w.id));
+    this.ledgerEntries = this.ledgerEntries.filter((l) => !PROTOTYPE_IDS.has(l.id));
+    this.users = this.users.filter((u) => !PROTOTYPE_IDS.has(u.id) && u.email !== 'owner@gmail.com' && u.email !== 'admin@gmail.com');
   }
 
   // USERS
@@ -108,17 +137,49 @@ class InMemoryDatabase {
     return this.users.find((u) => u.id === id);
   }
 
+  public getUserByEmail(email: string): User | undefined {
+    const normalized = email.trim().toLowerCase();
+    return this.users.find((u) => u.email && u.email.toLowerCase() === normalized);
+  }
+
   public getUserByPhone(phone: string): User | undefined {
     return this.users.find((u) => u.phone === phone);
   }
 
-  public addUser(userData: Omit<User, 'id' | 'createdAt'>): User {
+  public subscribe(listener: () => void): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
+  }
+
+  public notifyChange(): void {
+    this.changeListeners.forEach((listener) => {
+      try {
+        listener();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('chakki_db_changed'));
+    }
+  }
+
+  public addUser(userData: Omit<User, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): User {
+    const existingIndex = userData.id ? this.users.findIndex((u) => u.id === userData.id) : -1;
+    if (existingIndex >= 0) {
+      this.users[existingIndex] = { ...this.users[existingIndex], ...userData };
+      syncUserToFirestore(this.users[existingIndex]);
+      this.notifyChange();
+      return this.users[existingIndex];
+    }
     const newUser: User = {
       ...userData,
-      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
+      id: userData.id || `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: userData.createdAt || new Date().toISOString(),
     };
     this.users.push(newUser);
+    syncUserToFirestore(newUser);
+    this.notifyChange();
     return newUser;
   }
 
@@ -126,6 +187,8 @@ class InMemoryDatabase {
     const index = this.users.findIndex((u) => u.id === id);
     if (index === -1) return undefined;
     this.users[index] = { ...this.users[index], ...updates };
+    syncUserToFirestore(this.users[index]);
+    this.notifyChange();
     return this.users[index];
   }
 
@@ -133,6 +196,8 @@ class InMemoryDatabase {
     const user = this.users.find((u) => u.id === id);
     if (user) {
       user.isActive = !user.isActive;
+      syncUserToFirestore(user);
+      this.notifyChange();
     }
     return user;
   }
@@ -166,16 +231,29 @@ class InMemoryDatabase {
     return `CUST-${String(nextSeq).padStart(5, '0')}`;
   }
 
-  public addCustomer(customer: Omit<Customer, 'id' | 'createdAt'>): Customer {
+  public addCustomer(customer: Omit<Customer, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): Customer {
     const customerCode = customer.customerCode || this.generateNextCustomerCode();
+    const existingIndex = customer.id ? this.customers.findIndex((c) => c.id === customer.id) : -1;
+    if (existingIndex >= 0) {
+      this.customers[existingIndex] = {
+        ...this.customers[existingIndex],
+        ...customer,
+        updatedAt: customer.updatedAt || new Date().toISOString(),
+      };
+      syncCustomerToFirestore(this.customers[existingIndex]);
+      this.notifyChange();
+      return this.customers[existingIndex];
+    }
     const newCustomer: Customer = {
       ...customer,
-      id: `cust-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: customer.id || `cust-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       customerCode,
-      createdAt: new Date().toISOString(),
+      createdAt: customer.createdAt || new Date().toISOString(),
       updatedAt: customer.updatedAt || new Date().toISOString(),
     };
     this.customers.push(newCustomer);
+    syncCustomerToFirestore(newCustomer);
+    this.notifyChange();
     return newCustomer;
   }
 
@@ -187,7 +265,20 @@ class InMemoryDatabase {
       ...updates,
       updatedAt: new Date().toISOString(),
     };
+    syncCustomerToFirestore(this.customers[index]);
+    this.notifyChange();
     return this.customers[index];
+  }
+
+  public deleteCustomer(id: string, syncToRemote: boolean = true): boolean {
+    const index = this.customers.findIndex((c) => c.id === id || c.customerCode === id);
+    if (index === -1) return false;
+    const removed = this.customers.splice(index, 1)[0];
+    if (syncToRemote) {
+      syncDeleteCustomerFromFirestore(removed.id);
+    }
+    this.notifyChange();
+    return true;
   }
 
   // TRANSACTIONS
@@ -217,10 +308,14 @@ class InMemoryDatabase {
     const existingIndex = this.transactions.findIndex((t) => t.id === txn.id);
     if (existingIndex >= 0) {
       this.transactions[existingIndex] = { ...txn, updatedAt: new Date().toISOString() };
+      syncTransactionToFirestore(this.transactions[existingIndex]);
+      this.notifyChange();
       return this.transactions[existingIndex];
     }
 
     this.transactions.unshift(txn);
+    syncTransactionToFirestore(txn);
+    this.notifyChange();
     return txn;
   }
 
@@ -228,6 +323,7 @@ class InMemoryDatabase {
     const index = this.transactions.findIndex((t) => t.id === id);
     if (index >= 0) {
       this.transactions.splice(index, 1);
+      this.notifyChange();
       return true;
     }
     return false;
@@ -237,6 +333,7 @@ class InMemoryDatabase {
     const index = this.ledgerEntries.findIndex((e) => e.id === id);
     if (index >= 0) {
       this.ledgerEntries.splice(index, 1);
+      this.notifyChange();
       return true;
     }
     return false;
@@ -265,6 +362,7 @@ class InMemoryDatabase {
       }
     }
 
+    this.notifyChange();
     return newTxn;
   }
 
@@ -273,16 +371,16 @@ class InMemoryDatabase {
     return [...this.payments];
   }
 
-  public addPayment(pmt: Omit<Payment, 'id' | 'receiptNumber' | 'createdAt'>): Payment {
+  public addPayment(pmt: Omit<Payment, 'id' | 'receiptNumber' | 'createdAt'> & { id?: string; createdAt?: string }): Payment {
     const count = this.payments.length + 1;
     const year = new Date().getFullYear();
     const receiptNumber = `RCT-${year}-${String(count).padStart(4, '0')}`;
 
     const newPayment: Payment = {
       ...pmt,
-      id: `pmt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+      id: pmt.id || `pmt-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       receiptNumber,
-      createdAt: new Date().toISOString(),
+      createdAt: pmt.createdAt || new Date().toISOString(),
     };
 
     this.payments.unshift(newPayment);
@@ -293,9 +391,12 @@ class InMemoryDatabase {
       if (customer) {
         const reduction = newPayment.appliedToBillAmount !== undefined ? newPayment.appliedToBillAmount : newPayment.amount;
         customer.currentDueAmount = Math.max(0, (customer.currentDueAmount || 0) - reduction);
+        syncCustomerToFirestore(customer);
       }
     }
 
+    syncPaymentToFirestore(newPayment);
+    this.notifyChange();
     return newPayment;
   }
 
@@ -303,6 +404,8 @@ class InMemoryDatabase {
     const index = this.payments.findIndex((payment) => payment.id === id || payment.receiptNumber === id);
     if (index === -1) return undefined;
     this.payments[index] = { ...this.payments[index], ...updates };
+    syncPaymentToFirestore(this.payments[index]);
+    this.notifyChange();
     return this.payments[index];
   }
 
@@ -333,6 +436,7 @@ class InMemoryDatabase {
       updatedAt: now,
     };
     this.wholesalers.unshift(wholesaler);
+    syncWholesalerToFirestore(wholesaler);
     return { ...wholesaler };
   }
 
@@ -340,6 +444,7 @@ class InMemoryDatabase {
     const index = this.wholesalers.findIndex((wholesaler) => wholesaler.id === id || wholesaler.wholesalerCode === id);
     if (index < 0) return undefined;
     this.wholesalers[index] = { ...this.wholesalers[index], ...updates, updatedAt: new Date().toISOString() };
+    syncWholesalerToFirestore(this.wholesalers[index]);
     return { ...this.wholesalers[index] };
   }
 
@@ -395,6 +500,7 @@ class InMemoryDatabase {
       createdAt: new Date().toISOString(),
     };
     this.ledgerEntries.unshift(newEntry);
+    syncLedgerEntryToFirestore(newEntry);
     return newEntry;
   }
 
@@ -409,6 +515,7 @@ class InMemoryDatabase {
 
   public updateBusinessProfile(profile: BusinessProfileSettings): BusinessProfileSettings {
     this.businessProfile = { ...profile };
+    syncSettingsToFirestore();
     return { ...this.businessProfile };
   }
 
@@ -418,6 +525,7 @@ class InMemoryDatabase {
 
   public updateReceiptConfiguration(config: ReceiptConfiguration): ReceiptConfiguration {
     this.receiptConfiguration = { ...config };
+    syncSettingsToFirestore();
     return { ...this.receiptConfiguration };
   }
 
@@ -427,6 +535,7 @@ class InMemoryDatabase {
 
   public updateSystemPreferences(config: SystemPreferences): SystemPreferences {
     this.systemPreferences = { ...config };
+    syncSettingsToFirestore();
     return { ...this.systemPreferences };
   }
 

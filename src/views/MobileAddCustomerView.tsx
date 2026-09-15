@@ -83,7 +83,7 @@ export const MobileAddCustomerView: React.FC<MobileAddCustomerViewProps> = ({ on
       const actor = {
         id: user.id,
         name: user.name,
-        role: role || UserRole.STAFF,
+        role: role || UserRole.OWNER,
       };
 
       const newCust = CustomerService.createCustomer(

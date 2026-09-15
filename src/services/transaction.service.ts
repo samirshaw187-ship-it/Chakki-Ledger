@@ -181,7 +181,9 @@ export class TransactionService {
 
     // 7. Determine initial status
     let initialStatus: TransactionStatus = TransactionStatus.CONFIRMED;
-    if (calculation.settlementDirection === 'SETTLED' && calculation.balanceDelta === 0) {
+    if (calculation.paidAmount > 0 && calculation.balanceDelta === 0) {
+      initialStatus = TransactionStatus.PAID;
+    } else if (calculation.settlementDirection === 'SETTLED' && calculation.balanceDelta === 0) {
       initialStatus = TransactionStatus.SETTLED;
     } else if (calculation.paidAmount > 0 && calculation.balanceDelta > 0) {
       initialStatus = TransactionStatus.PARTIAL;
@@ -195,7 +197,7 @@ export class TransactionService {
       id: transactionId,
       transactionNumber,
       type: dto.type,
-      status: initialStatus,
+      status: dto.status || initialStatus,
       date: transactionDate.toISOString(),
       customerId: customer?.id,
       customerName: customer?.name,
@@ -207,13 +209,15 @@ export class TransactionService {
       paidAmount: calculation.paidAmount,
       balanceDelta: calculation.balanceDelta,
       settlementDirection: calculation.settlementDirection,
-      paymentStatus: dto.paymentStatus || (
-        calculation.settlementDirection === 'SETTLED'
+      paymentStatus: (dto.paymentStatus as any) || (
+        calculation.paidAmount > 0 && calculation.balanceDelta === 0
           ? 'PAID'
-          : calculation.paidAmount > 0 && calculation.balanceDelta === 0
-          ? 'PAID'
-          : calculation.paidAmount > 0
+          : calculation.paidAmount > 0 && calculation.balanceDelta > 0
           ? 'PARTIAL'
+          : calculation.balanceDelta > 0
+          ? 'DUE'
+          : calculation.settlementDirection === 'SETTLED'
+          ? 'PAID'
           : 'PENDING'
       ),
       items,

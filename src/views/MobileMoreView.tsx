@@ -146,8 +146,8 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
               Switch Test Role
             </span>
           </div>
-          <div className="grid grid-cols-3 gap-1.5 pt-1">
-            {(['OWNER', 'STAFF', 'ACCOUNTANT'] as UserRole[]).map((role) => (
+          <div className="grid grid-cols-2 gap-1.5 pt-1">
+            {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
               <button
                 key={role}
                 type="button"
@@ -158,7 +158,7 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
                     : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
                 }`}
               >
-                {role === 'OWNER' ? 'Owner' : role === 'STAFF' ? 'Staff' : 'Acct'}
+                {role === UserRole.OWNER ? 'Shop Owner' : 'Administrator'}
               </button>
             ))}
           </div>
@@ -214,9 +214,20 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
           <p className="text-xs text-stone-600 bg-stone-50 p-2.5 rounded-lg border border-stone-100">
             {roleMeta?.description}
           </p>
-          <div className="flex justify-end pt-2">
-            <Button variant="outline" size="sm" onClick={() => setIsProfileOpen(false)}>
-              Close
+          <div className="flex justify-between items-center pt-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsProfileOpen(false);
+                onNavigate('/app/settings');
+              }}
+              className="text-xs cursor-pointer"
+            >
+              Change Password
+            </Button>
+            <Button variant="primary" size="sm" onClick={() => setIsProfileOpen(false)}>
+              Done
             </Button>
           </div>
         </div>

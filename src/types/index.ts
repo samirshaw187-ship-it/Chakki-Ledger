@@ -4,8 +4,7 @@
 
 export enum UserRole {
   OWNER = 'OWNER',
-  STAFF = 'STAFF',
-  ACCOUNTANT = 'ACCOUNTANT'
+  ADMIN = 'ADMIN',
 }
 
 export enum TransactionType {
@@ -222,6 +221,10 @@ export enum AuditAction {
   CUSTOMER_CREATED = 'CUSTOMER_CREATED',
   CUSTOMER_UPDATED = 'CUSTOMER_UPDATED',
   CUSTOMER_STATUS_CHANGED = 'CUSTOMER_STATUS_CHANGED',
+  ACCOUNT_APPROVED = 'ACCOUNT_APPROVED',
+  ACCOUNT_REJECTED = 'ACCOUNT_REJECTED',
+  PASSWORD_CHANGED = 'PASSWORD_CHANGED',
+  USER_REGISTERED = 'USER_REGISTERED',
   OPENING_STOCK_CREATED = 'OPENING_STOCK_CREATED',
   INVENTORY_ADJUSTED = 'INVENTORY_ADJUSTED',
   INVENTORY_SETTING_CHANGED = 'INVENTORY_SETTING_CHANGED',
@@ -264,16 +267,22 @@ export enum SettlementPaymentStatus {
   PENDING = 'PENDING',
   PAID = 'PAID',
   PARTIAL = 'PARTIAL',
+  DUE = 'DUE',
 }
 
 export type SettlementDirection = 'CUSTOMER_PAYS' | 'CUSTOMER_RECEIVES' | 'SHOP_PAYS' | 'SETTLED';
 
 export interface User {
   id: string;
-  phone: string;
+  email: string;
+  phone?: string;
   name: string;
   role: UserRole;
   isActive: boolean;
+  isApproved?: boolean;
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
+  authProvider?: 'password' | 'google';
+  password?: string;
   pin?: string;
   createdAt: string;
   lastLoginAt?: string;
@@ -339,7 +348,7 @@ export interface Transaction {
   paidAmount: number;
   balanceDelta: number;
   settlementDirection?: SettlementDirection;
-  paymentStatus?: SettlementPaymentStatus | 'CALCULATED' | 'PENDING' | 'PAID' | 'PARTIAL';
+  paymentStatus?: SettlementPaymentStatus | 'CALCULATED' | 'PENDING' | 'PAID' | 'PARTIAL' | 'DUE';
   items: TransactionItem[];
   notes?: string;
   description?: string;

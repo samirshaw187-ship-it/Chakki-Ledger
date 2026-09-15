@@ -8,6 +8,7 @@
  */
 
 import { AuditAction, AuditLogEntry, Transaction, TransactionStatus } from '../types';
+import { syncAuditLogToFirestore } from './firestore-dispatcher';
 
 export interface AuditQueryOptions {
   search?: string;
@@ -21,90 +22,15 @@ export interface AuditQueryOptions {
 
 const INITIAL_SEED_AUDIT_LOGS: AuditLogEntry[] = [
   {
-    id: 'audit-seed-001',
-    action: AuditAction.TRANSACTION_CREATED,
-    entityType: 'TRANSACTION',
-    entityId: 'tx-001',
-    entityReference: 'TXN-2026-0001',
-    performedById: 'user-owner-01',
-    performedByName: 'Gopal Sahu (Owner)',
-    reason: 'Wheat deposit & roll atta extraction recorded at counter',
-    previousState: undefined,
-    newState: {
-      transactionNumber: 'TXN-2026-0001',
-      customer: 'Rahul Das',
-      wheatInput: '20 kg',
-      rollAttaDelivered: '18 kg',
-      rate: '₹10/kg',
-      netAmount: 180,
-      balanceDelta: 180,
-    },
-    timestamp: '2026-09-10T10:30:00.000Z',
-  },
-  {
-    id: 'audit-seed-002',
-    action: AuditAction.TRANSACTION_CREATED,
-    entityType: 'TRANSACTION',
-    entityId: 'tx-002',
-    entityReference: 'TXN-2026-0002',
-    performedById: 'user-staff-01',
-    performedByName: 'Suresh Kumar (Operator)',
-    reason: '20kg ration rice submitted @ ₹21/kg support rate',
-    previousState: undefined,
-    newState: {
-      transactionNumber: 'TXN-2026-0002',
-      customer: 'Rahim Sheikh',
-      riceQuantity: '20 kg',
-      appliedRate: '₹21/kg',
-      creditValue: 420,
-      status: 'COMPLETED',
-    },
-    timestamp: '2026-09-09T14:15:00.000Z',
-  },
-  {
-    id: 'audit-seed-003',
-    action: AuditAction.PAYMENT_CREATED,
-    entityType: 'PAYMENT',
-    entityId: 'pmt-001',
-    entityReference: 'RCT-2026-0001',
-    performedById: 'user-owner-01',
-    performedByName: 'Gopal Sahu (Owner)',
-    reason: 'Cash received ₹500 from Rakesh to clear pending balance',
-    previousState: { currentDue: 500 },
-    newState: {
-      receiptNumber: 'RCT-2026-0001',
-      customer: 'Rakesh',
-      amount: 500,
-      mode: 'CASH',
-      newDue: 0,
-    },
-    timestamp: '2026-09-08T11:00:00.000Z',
-  },
-  {
-    id: 'audit-seed-004',
-    action: AuditAction.CUSTOMER_CREATED,
-    entityType: 'CUSTOMER',
-    entityId: 'cust-01',
-    entityReference: 'CUST-00001',
-    performedById: 'user-owner-01',
-    performedByName: 'Gopal Sahu (Owner)',
-    reason: 'New customer profile registered for Rahul Das',
-    previousState: undefined,
-    newState: { customerCode: 'CUST-00001', name: 'Rahul Das', phone: '9830011223' },
-    timestamp: '2026-01-10T10:00:00.000Z',
-  },
-  {
-    id: 'audit-seed-005',
-    action: AuditAction.RATE_OVERRIDE_USED,
-    entityType: 'RATE',
-    entityId: 'rate-cfg-01',
-    entityReference: 'ROLL_ATTA_EXCHANGE',
-    performedById: 'user-owner-01',
-    performedByName: 'Gopal Sahu (Owner)',
-    reason: 'Verified base rate snapshot ₹10/kg for roll atta processing',
-    previousState: { rollAttaExchangeRate: 9 },
-    newState: { rollAttaExchangeRate: 10 },
-    timestamp: '2026-01-01T08:00:00.000Z',
+    id: 'audit-system-init',
+    action: AuditAction.SYSTEM_PREFERENCES_UPDATED,
+    entityType: 'SYSTEM',
+    entityId: 'sys-init',
+    entityReference: 'SYS-BOOT',
+    performedById: 'system',
+    performedByName: 'Chakki Ledger System',
+    reason: 'Chakki Ledger database active with real-time audit logging and persistence.',
+    timestamp: new Date().toISOString(),
   },
 ];
 
@@ -122,6 +48,7 @@ export class AuditService {
     };
 
     this.memoryAuditLogs.unshift(fullEntry);
+    syncAuditLogToFirestore(fullEntry);
     return fullEntry;
   }
 
@@ -141,6 +68,10 @@ export class AuditService {
     return [...this.memoryAuditLogs].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
+  }
+
+  public static getLogs(): AuditLogEntry[] {
+    return this.getAllLogs();
   }
 
   /**
