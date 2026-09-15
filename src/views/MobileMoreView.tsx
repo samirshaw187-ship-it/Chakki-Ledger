@@ -139,30 +139,32 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
           </span>
         </div>
 
-        {/* Quick Role Switcher for Fast Evaluation */}
-        <div className="pt-2 border-t border-stone-100 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
-              Switch Test Role
-            </span>
+        {/* Quick Role Switcher for Administrator Inspection */}
+        {activeRole === UserRole.ADMIN && (
+          <div className="pt-2 border-t border-stone-100 space-y-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
+                Admin View Toggle
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5 pt-1">
+              {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
+                <button
+                  key={role}
+                  type="button"
+                  onClick={() => onRoleChange(role)}
+                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer text-center ${
+                    activeRole === role
+                      ? 'bg-emerald-800 text-white border-emerald-800 shadow-2xs'
+                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
+                  }`}
+                >
+                  {role === UserRole.OWNER ? 'Shop Owner View' : 'Admin Console'}
+                </button>
+              ))}
+            </div>
           </div>
-          <div className="grid grid-cols-2 gap-1.5 pt-1">
-            {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
-              <button
-                key={role}
-                type="button"
-                onClick={() => onRoleChange(role)}
-                className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer text-center ${
-                  activeRole === role
-                    ? 'bg-emerald-800 text-white border-emerald-800 shadow-2xs'
-                    : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
-                }`}
-              >
-                {role === UserRole.OWNER ? 'Shop Owner' : 'Administrator'}
-              </button>
-            ))}
-          </div>
-        </div>
+        )}
       </div>
 
       {/* Menu Groups: Operational, Business, System, Account */}

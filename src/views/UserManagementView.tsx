@@ -31,7 +31,7 @@ export const UserManagementView: React.FC = () => {
   // Add User Form State
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState<UserRole>(UserRole.ADMIN);
+  const [role] = useState<UserRole>(UserRole.OWNER);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -129,13 +129,21 @@ export const UserManagementView: React.FC = () => {
       return;
     }
 
+    // Security: Admin accounts cannot be created
+    if (cleanEmail === 'samirpc187@gmail.com') {
+      setFormError('The System Administrator account (samirpc187@gmail.com) already exists.');
+      return;
+    }
+
     const newUser = dbRepository.addUser({
       name: cleanName,
       email: cleanEmail,
       phone: '',
-      role,
+      role: UserRole.OWNER, // strictly Shop Owner
       password,
       isActive: true,
+      isApproved: true,
+      approvalStatus: 'APPROVED', // approved directly by admin creating them
     });
 
     AuditService.log({
@@ -143,15 +151,14 @@ export const UserManagementView: React.FC = () => {
       entityType: 'USER',
       entityId: newUser.id,
       performedById: AuthService.getCurrentUser()?.id || 'system',
-      performedByName: AuthService.getCurrentUser()?.name || 'Shop Owner',
-      reason: `Created new ${role} account: ${cleanName} (${cleanEmail})`,
+      performedByName: AuthService.getCurrentUser()?.name || 'Administrator',
+      reason: `Admin created Shop Owner account: ${cleanName} (${cleanEmail})`,
     });
 
     // Reset & Close
     setName('');
     setEmail('');
     setPassword('');
-    setRole(UserRole.ADMIN);
     setIsAddModalOpen(false);
     refreshUsers();
   };
@@ -210,7 +217,7 @@ export const UserManagementView: React.FC = () => {
             leftIcon={<Plus className="w-4 h-4" />}
             onClick={() => setIsAddModalOpen(true)}
           >
-            Add New User
+            Add Shop Owner
           </Button>
         }
       />
@@ -485,8 +492,8 @@ export const UserManagementView: React.FC = () => {
       <Modal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
-        title="Register New Personnel"
-        subtitle="Add a new Shop Owner or Administrator account"
+        title="Add Shop Owner Account"
+        subtitle="Create an authorized Shop Owner account"
         maxWidth="md"
       >
         <form onSubmit={handleCreateUser} className="space-y-4">
@@ -548,16 +555,19 @@ export const UserManagementView: React.FC = () => {
             <label className="block text-xs font-semibold text-stone-700 mb-1">
               Assigned Role
             </label>
-            <select
-              value={role}
-              onChange={(e) => setRole(e.target.value as UserRole)}
-              className="w-full px-3 py-2 bg-stone-50 border border-stone-200 rounded-lg text-sm text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
-            >
-              <option value={UserRole.ADMIN}>ADMIN (Administrator - Operations, Ledger & Audit)</option>
-              <option value={UserRole.OWNER}>OWNER (Shop Owner - Full Authority & Configuration)</option>
-            </select>
-            <p className="text-[11px] text-stone-500 mt-1">
-              {ROLE_METADATA[role]?.description}
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl space-y-1">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-emerald-950">Shop Owner (OWNER)</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider bg-emerald-200/80 text-emerald-900 px-2 py-0.5 rounded-md">
+                  Counter &amp; Milling
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800">
+                Full counter operations, grinding rates, and khata customer management.
+              </p>
+            </div>
+            <p className="text-[10px] text-stone-400 mt-1">
+              Note: System Administrator is reserved exclusively for samirpc187@gmail.com. Admin creation is disabled.
             </p>
           </div>
 

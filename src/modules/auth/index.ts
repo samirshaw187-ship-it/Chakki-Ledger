@@ -48,7 +48,7 @@ export interface LoginResult {
 export function isSystemAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const clean = email.trim().toLowerCase();
-  return clean === 'samirpc187@gmail.com' || clean === 'samirshaw869@gmail.com';
+  return clean === 'samirpc187@gmail.com';
 }
 
 const SESSION_STORAGE_KEY = 'chakki_ledger_auth_session';
@@ -200,11 +200,25 @@ export class AuthService {
       FirestoreSyncService.initialize().catch((err) => {
         console.warn('Firestore sync init error:', err);
       });
-    } else {
-      FirestoreSyncService.cleanup();
     }
 
     this.notifyListeners();
+  }
+
+  /**
+   * Establish an active session for an approved user (e.g. after approval check)
+   */
+  public static establishSessionForUser(user: User): AuthSession {
+    const session: AuthSession = {
+      user: { ...user, lastLoginAt: new Date().toISOString() },
+      token: `token_${user.id}_${Date.now()}`,
+      role: user.role,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+    dbRepository.updateUser(user.id, { lastLoginAt: session.user.lastLoginAt });
+    FirestoreSyncService.saveUser(session.user).catch(() => {});
+    this.saveSession(session);
+    return session;
   }
 
   /**
@@ -239,7 +253,11 @@ export class AuthService {
    * - Email: Must end with @gmail.com
    * - Password: Min 8 chars, >=1 special char, >=1 number, >=1 uppercase, >=1 lowercase
    */
-  public static async login(email: string, password: string): Promise<LoginResult> {
+  public static async login(
+    email: string,
+    password: string,
+    targetPortal: 'owner' | 'admin' = 'owner'
+  ): Promise<LoginResult> {
     const cleanEmail = email.trim().toLowerCase();
     const cleanPassword = password;
 
@@ -255,42 +273,88 @@ export class AuthService {
       return { success: false, error: passwordValidation.error || 'Password does not meet security requirements.' };
     }
 
-    // 3. User lookup by email in repository
+    // 3. User lookup by email in local repository and Cloud Firestore
     let user = dbRepository.getUserByEmail(cleanEmail);
     if (!user) {
-      // User request 1: If Login credentials not available in database it means user has to Create Account
+      // Query Cloud Firestore directly if not yet synced in local memory
+      const remoteUser = await FirestoreSyncService.fetchUserByEmail(cleanEmail);
+      if (remoteUser) {
+        user = remoteUser;
+        dbRepository.addUser(user);
+      }
+    }
+
+    if (!user) {
+      if (targetPortal === 'admin') {
+        return {
+          success: false,
+          error: 'Administrator account not found. Only the authorized system administrator (samirpc187@gmail.com) can access this portal.',
+        };
+      }
       return {
         success: false,
-        error: 'Account does not exist for this Gmail address. Please click "Create Account" below to register.',
+        error: 'Account does not exist for this Gmail address. Please click "Create Account" below to register as a Shop Owner.',
       };
     }
 
-    // Check admin approval requirement for Shop Owners
-    if (user.role === UserRole.OWNER && (!user.isApproved || user.approvalStatus === 'PENDING')) {
-      this.notifyPendingApproval(user);
-      return {
-        success: false,
-        isPendingApproval: true,
-        pendingUser: user,
-        error: 'Registration request submitted. Please wait for Administrator approval. Thank you.',
-      };
+    // Strict portal separation check
+    if (targetPortal === 'admin') {
+      const isRealAdmin = isSystemAdminEmail(cleanEmail) || user.role === UserRole.ADMIN;
+      if (!isRealAdmin) {
+        return {
+          success: false,
+          error: 'Access Denied: The Admin Portal is strictly reserved for the Administrator (samirpc187@gmail.com). Shop Owners please sign in via the Shop Owner Portal.',
+        };
+      }
     }
 
-    if (user.approvalStatus === 'REJECTED') {
-      return {
-        success: false,
-        error: 'Your account registration was rejected by the Administrator. Please contact support.',
-      };
+    // 4. Verify password against user record (or refresh from Firestore if changed)
+    let expectedPassword = user.password || ROLE_METADATA[user.role]?.demoPassword;
+    if (expectedPassword && cleanPassword !== expectedPassword) {
+      // Re-fetch latest from Firestore to check if password was updated
+      const remoteUser = await FirestoreSyncService.fetchUserById(user.id) || await FirestoreSyncService.fetchUserByEmail(cleanEmail);
+      if (remoteUser && remoteUser.password === cleanPassword) {
+        user = remoteUser;
+        dbRepository.updateUser(user.id, user);
+        expectedPassword = user.password;
+      }
+    }
+
+    if (expectedPassword && cleanPassword !== expectedPassword) {
+      return { success: false, error: 'Incorrect password. Please verify and try again.' };
+    }
+
+    // 5. Check admin approval requirement for Shop Owners
+    // Always refresh latest approval status from Firestore to guarantee immediate response
+    if (user.role === UserRole.OWNER) {
+      if (!user.isApproved || user.approvalStatus === 'PENDING') {
+        const remoteUser = await FirestoreSyncService.fetchUserById(user.id) || await FirestoreSyncService.fetchUserByEmail(cleanEmail);
+        if (remoteUser) {
+          user = remoteUser;
+          dbRepository.updateUser(user.id, user);
+        }
+      }
+
+      if (!user.isApproved || user.approvalStatus === 'PENDING') {
+        this.notifyPendingApproval(user);
+        return {
+          success: false,
+          isPendingApproval: true,
+          pendingUser: user,
+          error: 'Registration request submitted. Please wait for Administrator approval. Thank you.',
+        };
+      }
+
+      if (user.approvalStatus === 'REJECTED') {
+        return {
+          success: false,
+          error: 'Your account registration was rejected by the Administrator. Please contact support.',
+        };
+      }
     }
 
     if (!user.isActive) {
       return { success: false, error: 'This account has been deactivated. Please contact the administrator.' };
-    }
-
-    // 4. Verify password against local / seed credential
-    const expectedPassword = user.password || ROLE_METADATA[user.role]?.demoPassword;
-    if (expectedPassword && cleanPassword !== expectedPassword) {
-      return { success: false, error: 'Incorrect password. Please verify and try again.' };
     }
 
     // 5. Attempt Firebase Authentication (Sign In or Auto Register in Firebase Auth)
@@ -342,7 +406,9 @@ export class AuthService {
   /**
    * Sign In / Sign Up with Google using Firebase Authentication
    */
-  public static async signInWithGoogle(): Promise<LoginResult> {
+  public static async signInWithGoogle(
+    targetPortal: 'owner' | 'admin' = 'owner'
+  ): Promise<LoginResult> {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
@@ -353,19 +419,32 @@ export class AuthService {
       }
 
       const email = fbUser.email.toLowerCase();
+      const isRealAdmin = isSystemAdminEmail(email);
+
+      // Admin portal security check
+      if (targetPortal === 'admin' && !isRealAdmin) {
+        try {
+          await firebaseSignOut(auth);
+        } catch {}
+        this.saveSession(null);
+        return {
+          success: false,
+          error: `Access Denied: Google account (${email}) is not authorized as Administrator. Only samirpc187@gmail.com is permitted. Shop Owners please use the Shop Owner Portal.`,
+        };
+      }
+
       let user = dbRepository.getUserByEmail(email);
 
       if (!user) {
-        // Register new Google user
-        const isAdmin = email === 'samirpc187@gmail.com' || email.includes('admin');
+        // Register new Google user - only genuine admin gets Admin role, everyone else is a Shop Owner requiring approval
         user = dbRepository.addUser({
-          name: fbUser.displayName || email.split('@')[0],
+          name: fbUser.displayName || (isRealAdmin ? 'Samir Shaw (Administrator)' : email.split('@')[0]),
           email: email,
           phone: fbUser.phoneNumber || undefined,
-          role: isAdmin ? UserRole.ADMIN : UserRole.OWNER,
-          isActive: isAdmin ? true : false,
-          isApproved: isAdmin ? true : false,
-          approvalStatus: isAdmin ? 'APPROVED' : 'PENDING',
+          role: isRealAdmin ? UserRole.ADMIN : UserRole.OWNER,
+          isActive: isRealAdmin ? true : false,
+          isApproved: isRealAdmin ? true : false,
+          approvalStatus: isRealAdmin ? 'APPROVED' : 'PENDING',
           authProvider: 'google',
         });
         await FirestoreSyncService.saveUser(user);
@@ -376,9 +455,9 @@ export class AuthService {
           entityId: user.id,
           performedById: user.id,
           performedByName: user.name,
-          reason: isAdmin
-            ? `Admin account registered via Google (${email})`
-            : `Shop Owner account registered via Google (${email}), pending Admin approval`,
+          reason: isRealAdmin
+            ? `Admin authenticated via Google (${email})`
+            : `Shop Owner registered via Google (${email}), pending Admin approval`,
         });
       }
 
@@ -433,9 +512,21 @@ export class AuthService {
       return { success: true, session };
     } catch (err: any) {
       console.warn('Google sign-in exception:', err);
-      // Helpful message for popup blocked or cancellation
       if (err.code === 'auth/popup-closed-by-user') {
         return { success: false, error: 'Google sign-in popup was closed before completing.' };
+      }
+      if (err.code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        return {
+          success: false,
+          error: `Current domain (${host}) is not in Firebase Authorized domains. Please add "${host}" to Firebase Console > Authentication > Settings > Authorized domains.`,
+        };
+      }
+      if (err.code === 'auth/operation-not-allowed') {
+        return {
+          success: false,
+          error: 'Google Sign-In is disabled in your Firebase project. Please enable "Google" under Firebase Console > Authentication > Sign-in method.',
+        };
       }
       return { success: false, error: err.message || 'Google sign-in failed.' };
     }
@@ -472,34 +563,129 @@ export class AuthService {
       return { success: false, error: passwordValidation.error || 'Password does not meet security requirements.' };
     }
 
-    // Check duplicate
-    const existing = dbRepository.getUserByEmail(cleanEmail);
+    // Security Check: Disallow creation of Administrator accounts
+    if (isSystemAdminEmail(cleanEmail) || data.role === UserRole.ADMIN) {
+      return {
+        success: false,
+        error: 'Administrator accounts cannot be created publicly. The System Administrator (samirpc187@gmail.com) must sign in directly through the Admin Portal.',
+      };
+    }
+
+    // Check duplicate in local repository and Cloud Firestore
+    let existing = dbRepository.getUserByEmail(cleanEmail);
+    if (!existing) {
+      const remoteUser = await FirestoreSyncService.fetchUserByEmail(cleanEmail);
+      if (remoteUser) {
+        existing = remoteUser;
+        dbRepository.addUser(existing);
+      }
+    }
     if (existing) {
-      return { success: false, error: 'An account with this Gmail address already exists. Please log in.' };
+      // Case A: User is already approved
+      if (existing.isApproved && existing.approvalStatus === 'APPROVED') {
+        return {
+          success: false,
+          error: 'An account with this Gmail address is already registered and approved. Please switch to the Sign In tab to log in.',
+        };
+      }
+
+      // Case B: User is pending approval
+      if (existing.approvalStatus === 'PENDING') {
+        // Attempt to ensure user exists in Firebase Auth
+        try {
+          await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        } catch (fbErr: any) {
+          if (fbErr.code === 'auth/operation-not-allowed') {
+            return {
+              success: false,
+              error: 'Email/Password sign-in is disabled in your Firebase project. Please enable "Email/Password" in Firebase Console > Authentication > Sign-in method.',
+            };
+          }
+          if (fbErr.code === 'auth/unauthorized-domain') {
+            const host = typeof window !== 'undefined' ? window.location.hostname : '';
+            return {
+              success: false,
+              error: `Current domain (${host}) is not in Firebase Authorized domains. Please add "${host}" in Firebase Console > Authentication > Settings > Authorized domains.`,
+            };
+          }
+          // If auth/email-already-in-use, user is already in Firebase Auth
+        }
+
+        // Update credentials in database
+        existing.password = cleanPassword;
+        existing.authProvider = 'password';
+        if (data.name) existing.name = data.name.trim();
+        if (data.phone) existing.phone = data.phone.trim();
+        dbRepository.updateUser(existing.id, existing);
+        await FirestoreSyncService.saveUser(existing);
+
+        try {
+          await firebaseSignOut(auth);
+        } catch {}
+        this.saveSession(null);
+        this.notifyPendingApproval(existing);
+
+        return {
+          success: true,
+          user: existing,
+          isPendingApproval: true,
+          pendingUser: existing,
+          message: 'Your registration request has been submitted and is awaiting Administrator approval.',
+        };
+      }
+
+      // Case C: User is rejected or other status
+      if (existing.approvalStatus === 'REJECTED') {
+        return {
+          success: false,
+          error: 'This account registration was previously declined by the Administrator. Please contact samirpc187@gmail.com.',
+        };
+      }
     }
 
     // Create user in Firebase Auth
     try {
       await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
     } catch (fbErr: any) {
-      if (fbErr.code !== 'auth/email-already-in-use') {
-        console.warn('Firebase createUser note:', fbErr.message);
+      if (fbErr.code === 'auth/email-already-in-use') {
+        // Email already registered in Firebase Auth - proceed to register locally as pending
+        console.log('User already registered in Firebase Auth, linking local record');
+      } else if (fbErr.code === 'auth/operation-not-allowed') {
+        return {
+          success: false,
+          error: 'Email/Password sign-in is disabled in your Firebase project. Please enable "Email/Password" in Firebase Console > Authentication > Sign-in method.',
+        };
+      } else if (fbErr.code === 'auth/unauthorized-domain') {
+        const host = typeof window !== 'undefined' ? window.location.hostname : '';
+        return {
+          success: false,
+          error: `Current domain (${host}) is not in Firebase Authorized domains. Please add "${host}" in Firebase Console > Authentication > Settings > Authorized domains.`,
+        };
+      } else if (fbErr.code === 'auth/weak-password') {
+        return {
+          success: false,
+          error: `Password does not meet Firebase requirements: ${fbErr.message || 'Please use at least 8 characters with letters, numbers, and symbols.'}`,
+        };
+      } else {
+        console.error('Firebase createUser error:', fbErr);
+        return {
+          success: false,
+          error: `Firebase registration error: ${fbErr.message || fbErr.code}`,
+        };
       }
     }
 
-    // Determine role & approval status
-    const isAdmin = cleanEmail === 'samirpc187@gmail.com' || data.role === UserRole.ADMIN;
-    const role = isAdmin ? UserRole.ADMIN : UserRole.OWNER;
-    const requiresApproval = role === UserRole.OWNER;
+    // All public registrations are strictly Shop Owners requiring Administrator approval
+    const role = UserRole.OWNER;
 
     const newUser = dbRepository.addUser({
       name: data.name.trim(),
       email: cleanEmail,
       phone: data.phone?.trim(),
       role,
-      isActive: !requiresApproval,
-      isApproved: !requiresApproval,
-      approvalStatus: requiresApproval ? 'PENDING' : 'APPROVED',
+      isActive: false,
+      isApproved: false,
+      approvalStatus: 'PENDING',
       password: cleanPassword,
       authProvider: 'password',
     });
@@ -512,30 +698,21 @@ export class AuthService {
       entityId: newUser.id,
       performedById: newUser.id,
       performedByName: newUser.name,
-      reason: requiresApproval
-        ? `Shop Owner account registered by ${newUser.name} (${cleanEmail}). Pending Admin approval.`
-        : `Admin account registered by ${newUser.name} (${cleanEmail}).`,
+      reason: `Shop Owner registration submitted by ${newUser.name} (${cleanEmail}). Pending Admin approval.`,
     });
 
-    if (requiresApproval) {
-      try {
-        await firebaseSignOut(auth);
-      } catch {}
-      this.saveSession(null);
-      this.notifyPendingApproval(newUser);
-      return {
-        success: true,
-        user: newUser,
-        isPendingApproval: true,
-        pendingUser: newUser,
-        message: 'Registration request submitted. Please wait for Administrator approval. Thank you.',
-      };
-    }
+    try {
+      await firebaseSignOut(auth);
+    } catch {}
+    this.saveSession(null);
+    this.notifyPendingApproval(newUser);
 
     return {
       success: true,
       user: newUser,
-      message: 'Admin account created successfully! You can now log in.',
+      isPendingApproval: true,
+      pendingUser: newUser,
+      message: 'Registration request submitted. Please wait for Administrator approval. Thank you.',
     };
   }
 

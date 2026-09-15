@@ -202,6 +202,14 @@ class InMemoryDatabase {
     return user;
   }
 
+  public deleteUser(id: string): boolean {
+    const index = this.users.findIndex((u) => u.id === id);
+    if (index === -1) return false;
+    this.users.splice(index, 1);
+    this.notifyChange();
+    return true;
+  }
+
   // CUSTOMERS
   public getCustomers(): Customer[] {
     return [...this.customers];

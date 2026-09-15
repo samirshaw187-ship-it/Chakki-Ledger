@@ -20,11 +20,13 @@
 import {
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   deleteDoc,
   onSnapshot,
   query,
+  where,
   orderBy,
   limit,
 } from 'firebase/firestore';
@@ -105,7 +107,11 @@ export class FirestoreSyncService {
       if (!usersSnap.empty) {
         for (const docSnap of usersSnap.docs) {
           const user = docSnap.data() as User;
-          if (PROTOTYPE_DOC_IDS.has(docSnap.id) || user.email === 'owner@gmail.com') {
+          if (
+            PROTOTYPE_DOC_IDS.has(docSnap.id) ||
+            user.email === 'owner@gmail.com' ||
+            (docSnap.id === 'user-admin-01' && user.email === 'samirshaw869@gmail.com')
+          ) {
             try { await deleteDoc(docSnap.ref); } catch {}
             continue;
           }
@@ -363,6 +369,37 @@ export class FirestoreSyncService {
       await setDoc(docRef, user, { merge: true });
     } catch (e) {
       console.warn(`Firestore: error saving user ${user.id}`, e);
+    }
+  }
+
+  /**
+   * Fetch a user by email directly from Cloud Firestore
+   */
+  public static async fetchUserByEmail(email: string): Promise<User | null> {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(5));
+      const snap = await getDocs(q);
+      if (snap.empty) return null;
+      const users = snap.docs.map((d) => d.data() as User);
+      return users[0] || null;
+    } catch (e) {
+      console.warn('Error fetching user by email from Firestore:', e);
+      return null;
+    }
+  }
+
+  /**
+   * Fetch a user by ID directly from Cloud Firestore
+   */
+  public static async fetchUserById(userId: string): Promise<User | null> {
+    try {
+      const docSnap = await getDoc(doc(db, 'users', userId));
+      if (!docSnap.exists()) return null;
+      return docSnap.data() as User;
+    } catch (e) {
+      console.warn(`Error fetching user ${userId} from Firestore:`, e);
+      return null;
     }
   }
 

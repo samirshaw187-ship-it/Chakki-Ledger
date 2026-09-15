@@ -17,20 +17,6 @@ import {
 export const SEED_USERS: User[] = [
   {
     id: 'user-admin-01',
-    email: 'samirshaw869@gmail.com',
-    phone: '9830099887',
-    name: 'Samir Shaw (Administrator)',
-    role: UserRole.ADMIN,
-    isActive: true,
-    isApproved: true,
-    approvalStatus: 'APPROVED',
-    password: 'samirCL@2025',
-    pin: '9988',
-    createdAt: '2026-01-01T08:00:00.000Z',
-    lastLoginAt: new Date().toISOString(),
-  },
-  {
-    id: 'user-admin-02',
     email: 'samirpc187@gmail.com',
     phone: '9830099887',
     name: 'Samir Shaw (Administrator)',
