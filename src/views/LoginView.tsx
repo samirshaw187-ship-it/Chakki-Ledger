@@ -22,6 +22,7 @@ import {
   HelpCircle,
 } from 'lucide-react';
 import { AuthService, validateGmail, validatePassword } from '../modules/auth';
+import { FirestoreSyncService } from '../services/firestore-sync.service';
 import { ApprovalPendingModal } from '../components/domain/ApprovalPendingModal';
 import { FirebaseSetupHelpModal } from '../components/domain/FirebaseSetupHelpModal';
 
@@ -878,20 +879,28 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
           </div>
         )}
 
-        {/* Security & Cloud Firestore Assurance */}
-        <div className="pt-2 border-t border-stone-100 flex flex-col items-center gap-1.5 text-center text-stone-500 text-[11px]">
-          <span className="flex items-center justify-center gap-1.5">
+        {/* Security & Database Status */}
+        <div className="pt-2 border-t border-stone-100 flex flex-col items-center gap-1 text-center text-stone-500 text-[11px]">
+          <span className="flex items-center justify-center gap-1.5 font-medium">
             <ShieldCheck className="w-3.5 h-3.5 text-emerald-700" />
-            Connected to Cloud Firestore &amp; Firebase Auth
+            {FirestoreSyncService.isFirebaseEnabled()
+              ? 'Connected to Cloud Firestore & Firebase Auth'
+              : 'Standalone Local Database Engine Active (Firebase Disconnected)'}
           </span>
-          <button
-            type="button"
-            onClick={() => setIsFirebaseHelpOpen(true)}
-            className="inline-flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 hover:underline cursor-pointer"
-          >
-            <Globe className="w-3 h-3" />
-            <span>Firebase Settings &amp; Authorized Domains</span>
-          </button>
+          {FirestoreSyncService.isFirebaseEnabled() ? (
+            <button
+              type="button"
+              onClick={() => setIsFirebaseHelpOpen(true)}
+              className="inline-flex items-center gap-1 text-[11px] text-stone-400 hover:text-stone-700 hover:underline cursor-pointer"
+            >
+              <Globe className="w-3 h-3" />
+              <span>Firebase Settings &amp; Authorized Domains</span>
+            </button>
+          ) : (
+            <span className="text-[10px] text-stone-400">
+              High-integrity local persistence &amp; offline storage
+            </span>
+          )}
         </div>
       </div>
 

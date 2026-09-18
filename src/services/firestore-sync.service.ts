@@ -63,7 +63,34 @@ const PROTOTYPE_DOC_IDS = new Set([
 export class FirestoreSyncService {
   private static isInitialized = false;
   private static isSyncing = false;
+  private static isEnabled = true; // Firebase enabled for cloud persistence and sync
   private static listeners: Array<() => void> = [];
+
+  /**
+   * Status check whether Firebase connection is active
+   */
+  public static isFirebaseEnabled(): boolean {
+    return this.isEnabled;
+  }
+
+  /**
+   * Explicitly disconnect from Firebase
+   */
+  public static disconnect(): void {
+    this.isEnabled = false;
+    this.cleanup();
+    console.log('Chakki Ledger: Firebase disconnected. Standalone local database active.');
+  }
+
+  /**
+   * Reconnect to Firebase if explicitly requested
+   */
+  public static connect(): void {
+    this.isEnabled = true;
+    this.initialize().catch((err) => {
+      console.warn('Firebase reconnection error:', err);
+    });
+  }
 
   /**
    * Initialize Firestore synchronization:
@@ -73,6 +100,10 @@ export class FirestoreSyncService {
    * 4. Set up real-time onSnapshot listeners for live multi-tab & multi-device sync
    */
   public static async initialize(): Promise<void> {
+    if (!this.isEnabled) {
+      console.log('Chakki Ledger: Firebase is disconnected. Standalone local engine active with zero network dependencies.');
+      return;
+    }
     if (this.isInitialized) return;
     this.isInitialized = true;
 
@@ -111,8 +142,7 @@ export class FirestoreSyncService {
           const user = docSnap.data() as User;
           if (
             PROTOTYPE_DOC_IDS.has(docSnap.id) ||
-            user.email === 'owner@gmail.com' ||
-            (docSnap.id === 'user-admin-01' && user.email === 'samirshaw869@gmail.com')
+            user.email === 'owner@gmail.com'
           ) {
             try { await deleteDoc(docSnap.ref); } catch {}
             continue;
@@ -473,6 +503,7 @@ export class FirestoreSyncService {
   // --- Document write helpers with fire-and-forget background sync ---
 
   public static async deleteCustomer(id: string): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'customers', id);
       await deleteDoc(docRef);
@@ -482,6 +513,7 @@ export class FirestoreSyncService {
   }
 
   public static async deleteLedgerEntry(id: string): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'ledger_entries', id);
       await deleteDoc(docRef);
@@ -491,6 +523,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveUser(user: User): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'users', user.id);
       await setDoc(docRef, user, { merge: true });
@@ -503,6 +536,7 @@ export class FirestoreSyncService {
    * Fetch a user by email directly from Cloud Firestore
    */
   public static async fetchUserByEmail(email: string): Promise<User | null> {
+    if (!this.isEnabled) return null;
     try {
       const cleanEmail = email.trim().toLowerCase();
       const q = query(collection(db, 'users'), where('email', '==', cleanEmail), limit(5));
@@ -520,6 +554,7 @@ export class FirestoreSyncService {
    * Fetch a user by ID directly from Cloud Firestore
    */
   public static async fetchUserById(userId: string): Promise<User | null> {
+    if (!this.isEnabled) return null;
     try {
       const docSnap = await getDoc(doc(db, 'users', userId));
       if (!docSnap.exists()) return null;
@@ -531,6 +566,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveCustomer(customer: Customer): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'customers', customer.id);
       await setDoc(docRef, customer, { merge: true });
@@ -540,6 +576,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveTransaction(txn: Transaction): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'transactions', txn.id);
       await setDoc(docRef, txn, { merge: true });
@@ -549,6 +586,7 @@ export class FirestoreSyncService {
   }
 
   public static async savePayment(payment: Payment): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'payments', payment.id);
       await setDoc(docRef, payment, { merge: true });
@@ -558,6 +596,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveWholesaler(wholesaler: Wholesaler): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'wholesalers', wholesaler.id);
       await setDoc(docRef, wholesaler, { merge: true });
@@ -567,6 +606,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveLedgerEntry(entry: LedgerEntry): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'ledger_entries', entry.id);
       await setDoc(docRef, entry, { merge: true });
@@ -576,6 +616,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveAuditLog(log: AuditLogEntry): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       const docRef = doc(db, 'audit_logs', log.id);
       await setDoc(docRef, log, { merge: true });
@@ -585,6 +626,7 @@ export class FirestoreSyncService {
   }
 
   public static async saveSettings(): Promise<void> {
+    if (!this.isEnabled) return;
     try {
       await setDoc(doc(db, 'settings', 'rate_config'), dbRepository.getRateConfig(), { merge: true });
       await setDoc(doc(db, 'settings', 'business_profile'), dbRepository.getBusinessProfile(), { merge: true });

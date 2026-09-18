@@ -117,8 +117,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.MANAGE_EXPENSES,
     Permission.VIEW_ANALYTICS,
     Permission.MANAGE_RATES,
-    Permission.MANAGE_USERS,
-    Permission.VIEW_AUDIT_LOGS,
     Permission.EXPORT_BACKUP,
     Permission.SYSTEM_SETTINGS,
   ],
@@ -228,7 +226,17 @@ export const ROUTE_PERMISSION_MAP: Record<string, Permission> = {
  * Check if a role has access to a given route path
  */
 export function canAccessRoute(path: string, role: UserRole): boolean {
-  if (role === UserRole.OWNER || role === UserRole.ADMIN) return true;
+  // Shop Owner is strictly forbidden from accessing any /admin/* route and audit logs
+  if (role === UserRole.OWNER) {
+    if (path.startsWith('/admin') || path === '/app/audit-logs') {
+      return false;
+    }
+  }
+
+  // Admin has full system access
+  if (role === UserRole.ADMIN) {
+    return true;
+  }
 
   // Exact match
   if (ROUTE_PERMISSION_MAP[path]) {

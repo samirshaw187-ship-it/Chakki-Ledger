@@ -51,16 +51,25 @@ function MainApp() {
   const [currentPath, setCurrentPath] = useState<string>('/app/home');
   const [isMobileLayout, setIsMobileLayout] = useState<boolean>(true);
 
-  // Synchronize layout mode if role defaults to desktop (e.g. Admin)
+  // Synchronize layout mode and guard roles
   useEffect(() => {
-    if (activeRole === UserRole.ADMIN && currentPath === '/app/home') {
+    if (activeRole === UserRole.OWNER) {
+      setIsMobileLayout(true);
+      if (currentPath.startsWith('/admin') || currentPath === '/app/audit-logs') {
+        setCurrentPath('/app/home');
+      }
+    } else if (activeRole === UserRole.ADMIN && currentPath === '/app/home') {
       setIsMobileLayout(false);
       setCurrentPath('/admin/dashboard');
     }
-  }, [activeRole]);
+  }, [activeRole, currentPath]);
 
   // Synchronize role switch with AuthService and auto-navigate if route is forbidden
   const handleRoleChange = (newRole: UserRole) => {
+    // Security: Shop Owner cannot escalate privileges to Admin
+    if (activeRole === UserRole.OWNER && newRole === UserRole.ADMIN) {
+      return;
+    }
     loginAsRole(newRole);
     if (!canAccessRoute(currentPath, newRole)) {
       const defaultPath = ROLE_METADATA[newRole]?.defaultPath || '/app/home';
@@ -74,6 +83,11 @@ function MainApp() {
   };
 
   const handleNavigate = (path: string) => {
+    if (activeRole === UserRole.OWNER && (path.startsWith('/admin') || path === '/app/audit-logs')) {
+      setCurrentPath('/app/home');
+      setIsMobileLayout(true);
+      return;
+    }
     setCurrentPath(path);
     // If navigating to admin route, switch to admin layout automatically
     if (path.startsWith('/admin')) {
@@ -89,6 +103,12 @@ function MainApp() {
   };
 
   const toggleLayoutMode = () => {
+    // Security: Shop Owner is strictly restricted to mobile view
+    if (activeRole === UserRole.OWNER) {
+      setIsMobileLayout(true);
+      setCurrentPath('/app/home');
+      return;
+    }
     if (isMobileLayout) {
       setIsMobileLayout(false);
       setCurrentPath('/admin/dashboard');

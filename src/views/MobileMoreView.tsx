@@ -59,23 +59,25 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
     },
   ].filter((item) => canAccessRoute(item.path!, activeRole));
 
-  // 2. Business Group
-  const businessItems: MenuItem[] = [
-    {
-      path: '/app/reports',
-      label: 'Reports',
-      sublabel: 'Daily statements, khata dues & sales reports',
-      icon: FileSpreadsheet,
-    },
-    {
-      path: '/app/daily-closing',
-      label: 'Daily Closing',
-      sublabel: 'End-of-day register tally & cash verification',
-      icon: Lock,
-    },
-  ].filter((item) => canAccessRoute(item.path!, activeRole));
+  // 2. Business Group (Only accessible by Administrator; completely removed for Shop Owner)
+  const businessItems: MenuItem[] = activeRole === UserRole.OWNER
+    ? []
+    : [
+        {
+          path: '/app/reports',
+          label: 'Reports',
+          sublabel: 'Daily statements, khata dues & sales reports',
+          icon: FileSpreadsheet,
+        },
+        {
+          path: '/app/daily-closing',
+          label: 'Daily Closing',
+          sublabel: 'End-of-day register tally & cash verification',
+          icon: Lock,
+        },
+      ].filter((item) => canAccessRoute(item.path!, activeRole));
 
-  // 3. System Group
+  // 3. System Group (Audit Logs is exclusively for Administrator)
   const systemItems: MenuItem[] = [
     {
       path: '/app/settings',
@@ -89,12 +91,16 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
       sublabel: 'Export ledger data & database snapshot',
       icon: HardDriveDownload,
     },
-    {
-      path: '/app/audit-logs',
-      label: 'Audit Logs',
-      sublabel: 'System activities & security event trail',
-      icon: ShieldCheck,
-    },
+    ...(activeRole === UserRole.ADMIN
+      ? [
+          {
+            path: '/app/audit-logs',
+            label: 'Audit Logs',
+            sublabel: 'System activities & security event trail',
+            icon: ShieldCheck,
+          },
+        ]
+      : []),
   ].filter((item) => canAccessRoute(item.path!, activeRole));
 
   // 4. Account Group

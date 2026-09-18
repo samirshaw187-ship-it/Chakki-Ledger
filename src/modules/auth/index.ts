@@ -48,7 +48,7 @@ export interface LoginResult {
 export function isSystemAdminEmail(email?: string | null): boolean {
   if (!email) return false;
   const clean = email.trim().toLowerCase();
-  return clean === 'samirpc187@gmail.com';
+  return clean === 'samirpc187@gmail.com' || clean === 'samirshaw869@gmail.com';
 }
 
 const SESSION_STORAGE_KEY = 'chakki_ledger_auth_session';
@@ -103,6 +103,10 @@ export class AuthService {
   public static initAuthListener(): void {
     if (this.authStateInitialized) return;
     this.authStateInitialized = true;
+
+    if (!FirestoreSyncService.isFirebaseEnabled()) {
+      return;
+    }
 
     // Trigger initial Firestore sync only if active session exists
     if (this.currentSession) {
@@ -357,28 +361,32 @@ export class AuthService {
       return { success: false, error: 'This account has been deactivated. Please contact the administrator.' };
     }
 
-    // 5. Attempt Firebase Authentication (Sign In or Auto Register in Firebase Auth)
+    // 5. Attempt Firebase Authentication if Firebase is connected
     let firebaseUid: string | undefined;
-    try {
-      const fbCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-      firebaseUid = fbCredential.user.uid;
-    } catch (fbErr: any) {
-      // If user doesn't exist in Firebase Auth yet, automatically register them
-      if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') {
-        try {
-          const newCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-          firebaseUid = newCredential.user.uid;
-        } catch (createErr: any) {
-          console.warn('Firebase Auth user registration note:', createErr.code || createErr.message);
+    if (FirestoreSyncService.isFirebaseEnabled()) {
+      try {
+        const fbCredential = await signInWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+        firebaseUid = fbCredential.user.uid;
+      } catch (fbErr: any) {
+        // If user doesn't exist in Firebase Auth yet, automatically register them
+        if (fbErr.code === 'auth/user-not-found' || fbErr.code === 'auth/invalid-credential') {
+          try {
+            const newCredential = await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+            firebaseUid = newCredential.user.uid;
+          } catch (createErr: any) {
+            console.warn('Firebase Auth user registration note:', createErr.code || createErr.message);
+          }
+        } else {
+          console.warn('Firebase Auth sign in note:', fbErr.code || fbErr.message);
         }
-      } else {
-        console.warn('Firebase Auth sign in note:', fbErr.code || fbErr.message);
       }
     }
 
-    // 6. Update last login timestamp & sync to Firestore
+    // 6. Update last login timestamp & sync to Firestore if enabled
     dbRepository.updateUser(user.id, { lastLoginAt: new Date().toISOString() });
-    await FirestoreSyncService.saveUser({ ...user, lastLoginAt: new Date().toISOString() });
+    if (FirestoreSyncService.isFirebaseEnabled()) {
+      await FirestoreSyncService.saveUser({ ...user, lastLoginAt: new Date().toISOString() });
+    }
 
     const session: AuthSession = {
       user: { ...user, lastLoginAt: new Date().toISOString() },
@@ -429,7 +437,7 @@ export class AuthService {
         this.saveSession(null);
         return {
           success: false,
-          error: `Access Denied: Google account (${email}) is not authorized as Administrator. Only samirpc187@gmail.com is permitted. Shop Owners please use the Shop Owner Portal.`,
+          error: `Access Denied: Google account (${email}) is not authorized as Administrator. Shop Owners please use the Shop Owner Portal.`,
         };
       }
 
@@ -643,35 +651,37 @@ export class AuthService {
       }
     }
 
-    // Create user in Firebase Auth
-    try {
-      await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
-    } catch (fbErr: any) {
-      if (fbErr.code === 'auth/email-already-in-use') {
-        // Email already registered in Firebase Auth - proceed to register locally as pending
-        console.log('User already registered in Firebase Auth, linking local record');
-      } else if (fbErr.code === 'auth/operation-not-allowed') {
-        return {
-          success: false,
-          error: 'Email/Password sign-in is disabled in your Firebase project. Please enable "Email/Password" in Firebase Console > Authentication > Sign-in method.',
-        };
-      } else if (fbErr.code === 'auth/unauthorized-domain') {
-        const host = typeof window !== 'undefined' ? window.location.hostname : '';
-        return {
-          success: false,
-          error: `Current domain (${host}) is not in Firebase Authorized domains. Please add "${host}" in Firebase Console > Authentication > Settings > Authorized domains.`,
-        };
-      } else if (fbErr.code === 'auth/weak-password') {
-        return {
-          success: false,
-          error: `Password does not meet Firebase requirements: ${fbErr.message || 'Please use at least 8 characters with letters, numbers, and symbols.'}`,
-        };
-      } else {
-        console.error('Firebase createUser error:', fbErr);
-        return {
-          success: false,
-          error: `Firebase registration error: ${fbErr.message || fbErr.code}`,
-        };
+    // Create user in Firebase Auth if Firebase is connected
+    if (FirestoreSyncService.isFirebaseEnabled()) {
+      try {
+        await createUserWithEmailAndPassword(auth, cleanEmail, cleanPassword);
+      } catch (fbErr: any) {
+        if (fbErr.code === 'auth/email-already-in-use') {
+          // Email already registered in Firebase Auth - proceed to register locally as pending
+          console.log('User already registered in Firebase Auth, linking local record');
+        } else if (fbErr.code === 'auth/operation-not-allowed') {
+          return {
+            success: false,
+            error: 'Email/Password sign-in is disabled in your Firebase project. Please enable "Email/Password" in Firebase Console > Authentication > Sign-in method.',
+          };
+        } else if (fbErr.code === 'auth/unauthorized-domain') {
+          const host = typeof window !== 'undefined' ? window.location.hostname : '';
+          return {
+            success: false,
+            error: `Current domain (${host}) is not in Firebase Authorized domains. Please add "${host}" in Firebase Console > Authentication > Settings > Authorized domains.`,
+          };
+        } else if (fbErr.code === 'auth/weak-password') {
+          return {
+            success: false,
+            error: `Password does not meet Firebase requirements: ${fbErr.message || 'Please use at least 8 characters with letters, numbers, and symbols.'}`,
+          };
+        } else {
+          console.error('Firebase createUser error:', fbErr);
+          return {
+            success: false,
+            error: `Firebase registration error: ${fbErr.message || fbErr.code}`,
+          };
+        }
       }
     }
 
@@ -869,10 +879,12 @@ export class AuthService {
       });
     }
 
-    try {
-      await firebaseSignOut(auth);
-    } catch (err) {
-      console.warn('Firebase sign out error:', err);
+    if (FirestoreSyncService.isFirebaseEnabled()) {
+      try {
+        await firebaseSignOut(auth);
+      } catch (err) {
+        console.warn('Firebase sign out error:', err);
+      }
     }
 
     this.saveSession(null);

@@ -21,12 +21,14 @@ import {
   Clock,
   UserCheck,
   UserX,
+  Trash2,
 } from 'lucide-react';
 
 export const UserManagementView: React.FC = () => {
   const [users, setUsers] = useState<User[]>(() => dbRepository.getUsers());
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [actionFeedback, setActionFeedback] = useState<string | null>(null);
+  const [deleteConfirmUser, setDeleteConfirmUser] = useState<User | null>(null);
 
   // Add User Form State
   const [name, setName] = useState('');
@@ -79,21 +81,56 @@ export const UserManagementView: React.FC = () => {
     if (user.role === UserRole.OWNER && user.isActive) {
       const activeOwners = users.filter((u) => u.role === UserRole.OWNER && u.isActive);
       if (activeOwners.length <= 1) {
-        alert('Cannot deactivate the sole Shop Owner account. The chakki must have at least one active owner.');
+        alert('Cannot block the sole active Shop Owner account. The chakki must have at least one active owner.');
         return;
       }
     }
 
     dbRepository.toggleUserStatus(user.id);
+    const newStatus = !user.isActive;
     AuditService.log({
       action: AuditAction.STATUS_CHANGE,
       entityType: 'USER',
       entityId: user.id,
       performedById: AuthService.getCurrentUser()?.id || 'system',
-      performedByName: AuthService.getCurrentUser()?.name || 'Shop Owner',
-      reason: `User ${user.name} status changed to ${!user.isActive ? 'Active' : 'Deactivated'}`,
+      performedByName: AuthService.getCurrentUser()?.name || 'Administrator',
+      reason: `Admin ${newStatus ? 'Unblocked' : 'Blocked'} Shop Owner account: ${user.name}`,
     });
+    setActionFeedback(`Shop Owner ${user.name} is now ${newStatus ? 'Active / Unblocked' : 'Blocked'}.`);
     refreshUsers();
+  };
+
+  const handleDeleteUser = (user: User) => {
+    if (user.role === UserRole.ADMIN || user.email === 'samirpc187@gmail.com') {
+      alert('System Administrator account cannot be deleted.');
+      return;
+    }
+    const remainingOwners = users.filter((u) => u.role === UserRole.OWNER && u.id !== user.id);
+    if (remainingOwners.length === 0) {
+      alert('Cannot delete the sole Shop Owner account. Please create another Shop Owner first.');
+      return;
+    }
+    setDeleteConfirmUser(user);
+  };
+
+  const confirmDeleteUser = () => {
+    if (!deleteConfirmUser) return;
+    try {
+      dbRepository.deleteUser(deleteConfirmUser.id);
+      AuditService.log({
+        action: AuditAction.USER_UPDATE,
+        entityType: 'USER',
+        entityId: deleteConfirmUser.id,
+        performedById: AuthService.getCurrentUser()?.id || 'system',
+        performedByName: AuthService.getCurrentUser()?.name || 'Administrator',
+        reason: `Admin deleted Shop Owner account: ${deleteConfirmUser.name} (${deleteConfirmUser.email})`,
+      });
+      setActionFeedback(`Account for ${deleteConfirmUser.name} has been permanently deleted.`);
+      setDeleteConfirmUser(null);
+      refreshUsers();
+    } catch (e: any) {
+      alert(e.message || 'Unable to delete account');
+    }
   };
 
   const handleCreateUser = (e: React.FormEvent) => {
@@ -379,10 +416,10 @@ export const UserManagementView: React.FC = () => {
                         className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold ${
                           u.isActive
                             ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                            : 'bg-stone-100 text-stone-600 border border-stone-200'
+                            : 'bg-rose-50 text-rose-800 border border-rose-200'
                         }`}
                       >
-                        {u.isActive ? 'Active' : 'Deactivated'}
+                        {u.isActive ? 'Active' : 'Blocked'}
                       </span>
                     </td>
                     <td className="p-3 text-right">
@@ -397,17 +434,31 @@ export const UserManagementView: React.FC = () => {
                             Approve
                           </button>
                         )}
-                        <button
-                          type="button"
-                          onClick={() => handleToggleStatus(u)}
-                          className={`px-2.5 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
-                            u.isActive
-                              ? 'border-red-200 text-red-700 hover:bg-red-50'
-                              : 'border-emerald-200 text-emerald-800 hover:bg-emerald-50'
-                          }`}
-                        >
-                          {u.isActive ? 'Deactivate' : 'Activate'}
-                        </button>
+                        {u.role === UserRole.OWNER && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleStatus(u)}
+                              className={`px-2.5 py-1 rounded text-xs font-semibold border transition-colors cursor-pointer ${
+                                u.isActive
+                                  ? 'border-amber-300 text-amber-800 hover:bg-amber-50'
+                                  : 'border-emerald-200 text-emerald-800 hover:bg-emerald-50'
+                              }`}
+                              title={u.isActive ? 'Block Shop Owner' : 'Unblock Shop Owner'}
+                            >
+                              {u.isActive ? 'Block' : 'Unblock'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(u)}
+                              className="px-2 py-1 rounded text-xs font-semibold border border-rose-200 text-rose-700 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                              title="Delete Shop Owner Account"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                              <span>Delete</span>
+                            </button>
+                          </>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -422,6 +473,45 @@ export const UserManagementView: React.FC = () => {
       <div className="max-w-2xl">
         <ChangePasswordCard onSuccess={refreshUsers} />
       </div>
+
+      {/* Delete Confirmation Modal */}
+      {deleteConfirmUser && (
+        <Modal
+          isOpen={true}
+          onClose={() => setDeleteConfirmUser(null)}
+          title="Delete Shop Owner Account"
+          subtitle="Irreversible administrative action"
+          maxWidth="sm"
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-900 space-y-1">
+              <p className="font-bold">Are you sure you want to permanently delete this account?</p>
+              <p className="text-stone-600">
+                User: <strong>{deleteConfirmUser.name}</strong> ({deleteConfirmUser.email})
+              </p>
+              <p className="text-[11px] text-stone-500 mt-1">
+                The user will no longer be able to log in to the shop terminal. All audit logs and historical transactions remain intact for record keeping.
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setDeleteConfirmUser(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={confirmDeleteUser}
+              >
+                Permanently Delete
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
 
       {/* Role Permission Matrix Card */}
       <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-2xs">

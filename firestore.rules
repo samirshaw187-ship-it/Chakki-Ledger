@@ -6,10 +6,79 @@ service cloud.firestore {
       return request.auth != null;
     }
 
-    // Allow read and write for authenticated users or active app operations
+    // Helper to check if current user is an administrator
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == 'samirshaw869@gmail.com' ||
+        request.auth.token.email == 'samirpc187@gmail.com' ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN')
+      );
+    }
+
+    // Helper to check if user is active
+    function isApprovedUser() {
+      return isAuthenticated() && (
+        isAdmin() ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true)
+      );
+    }
+
+    // Users collection: users can read/write own record; Admins can manage all
+    match /users/{userId} {
+      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow delete: if isAdmin() && userId != request.auth.uid;
+    }
+
+    // Customers: Accessible to authenticated shop personnel
+    match /customers/{customerId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Transactions: Accessible to authenticated shop personnel
+    match /transactions/{transactionId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Payments: Accessible to authenticated shop personnel
+    match /payments/{paymentId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Wholesalers: Accessible to authenticated shop personnel
+    match /wholesalers/{wholesalerId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Ledger Entries: Immutable ledger updates
+    match /ledger_entries/{entryId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Inventory Movements: Stock adjustments and transaction flow
+    match /inventory_movements/{movementId} {
+      allow read, write: if isAuthenticated();
+    }
+
+    // Settings: Global rates and shop profile
+    match /settings/{settingId} {
+      allow read: if isAuthenticated();
+      allow write: if isAuthenticated();
+    }
+
+    // Audit logs: Accessible to Admins for security review, append-only for app operations
+    match /audit_logs/{logId} {
+      allow read: if isAdmin();
+      allow create: if isAuthenticated();
+      allow update, delete: if false; // Audit trail is strictly immutable
+    }
+
+    // Fallback for applet setup transition
     match /{document=**} {
       allow read, write: if isAuthenticated() || request.time < timestamp.date(2027, 1, 1);
     }
   }
 }
-

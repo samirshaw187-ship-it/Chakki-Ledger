@@ -38,10 +38,12 @@ export const FirebaseSetupHelpModal: React.FC<FirebaseSetupHelpModalProps> = ({
   const requiredDomains = [
     { domain: currentHostname, label: 'Current Applet Domain (Active Container)', priority: true },
     { domain: 'chakki-ledger.firebaseapp.com', label: 'Default Firebase Auth Domain' },
+    { domain: 'protean-notch-1fs6l.firebaseapp.com', label: 'Provisioned Firebase Auth Domain' },
     { domain: 'chakki-ledger.web.app', label: 'Firebase Web App Hosting' },
     { domain: 'localhost', label: 'Local Development' },
     { domain: 'ais-dev-5ysaerbqi7rsuiagdg7j5c-413397232898.asia-east1.run.app', label: 'Cloud Run Dev Host' },
     { domain: 'ais-pre-5ysaerbqi7rsuiagdg7j5c-413397232898.asia-east1.run.app', label: 'Cloud Run Preview Host' },
+    { domain: 'vercel.app', label: 'Vercel Deployment (Wildcard / your-app.vercel.app)' },
   ];
 
   // Deduplicate domains in case currentHostname is already in the list

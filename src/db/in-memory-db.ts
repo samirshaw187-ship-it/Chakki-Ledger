@@ -100,6 +100,7 @@ class InMemoryDatabase {
 
   constructor() {
     this.purgePrototypeData();
+    this.loadFromLocalStorage();
     // Initial audit log
     AuditService.log({
       action: 'SYSTEM' as any,
@@ -111,13 +112,90 @@ class InMemoryDatabase {
     });
   }
 
+  private loadFromLocalStorage(): void {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+      const storedCustomers = window.localStorage.getItem('chakki_customers_v2');
+      if (storedCustomers) {
+        this.customers = JSON.parse(storedCustomers);
+      }
+      const storedTransactions = window.localStorage.getItem('chakki_transactions_v2');
+      if (storedTransactions) {
+        this.transactions = JSON.parse(storedTransactions);
+      }
+      const storedPayments = window.localStorage.getItem('chakki_payments_v2');
+      if (storedPayments) {
+        this.payments = JSON.parse(storedPayments);
+      }
+      const storedWholesalers = window.localStorage.getItem('chakki_wholesalers_v2');
+      if (storedWholesalers) {
+        this.wholesalers = JSON.parse(storedWholesalers);
+      }
+      const storedLedger = window.localStorage.getItem('chakki_ledger_v2');
+      if (storedLedger) {
+        this.ledgerEntries = JSON.parse(storedLedger);
+      }
+      const storedUsers = window.localStorage.getItem('chakki_users_v2');
+      if (storedUsers) {
+        const parsedUsers: User[] = JSON.parse(storedUsers);
+        for (const u of parsedUsers) {
+          const idx = this.users.findIndex(
+            (existing) => existing.id === u.id || existing.email.toLowerCase() === u.email.toLowerCase()
+          );
+          if (idx === -1) {
+            this.users.push(u);
+          } else {
+            this.users[idx] = { ...this.users[idx], ...u };
+          }
+        }
+      }
+      const storedInventoryMovements = window.localStorage.getItem('chakki_inventory_movements_v2');
+      if (storedInventoryMovements) {
+        this.inventoryMovements = JSON.parse(storedInventoryMovements);
+      }
+      const storedSettings = window.localStorage.getItem('chakki_settings_v2');
+      if (storedSettings) {
+        const parsedSettings = JSON.parse(storedSettings);
+        if (parsedSettings.rateConfig) this.rateConfig = parsedSettings.rateConfig;
+        if (parsedSettings.businessProfile) this.businessProfile = parsedSettings.businessProfile;
+        if (parsedSettings.receiptConfiguration) this.receiptConfiguration = parsedSettings.receiptConfiguration;
+        if (parsedSettings.systemPreferences) this.systemPreferences = parsedSettings.systemPreferences;
+      }
+    } catch (e) {
+      console.warn('Could not load from localStorage:', e);
+    }
+  }
+
+  private persistToLocalStorage(): void {
+    if (typeof window === 'undefined' || !window.localStorage) return;
+    try {
+      window.localStorage.setItem('chakki_customers_v2', JSON.stringify(this.customers));
+      window.localStorage.setItem('chakki_transactions_v2', JSON.stringify(this.transactions));
+      window.localStorage.setItem('chakki_payments_v2', JSON.stringify(this.payments));
+      window.localStorage.setItem('chakki_wholesalers_v2', JSON.stringify(this.wholesalers));
+      window.localStorage.setItem('chakki_ledger_v2', JSON.stringify(this.ledgerEntries));
+      window.localStorage.setItem('chakki_users_v2', JSON.stringify(this.users));
+      window.localStorage.setItem('chakki_inventory_movements_v2', JSON.stringify(this.inventoryMovements));
+      window.localStorage.setItem(
+        'chakki_settings_v2',
+        JSON.stringify({
+          rateConfig: this.rateConfig,
+          businessProfile: this.businessProfile,
+          receiptConfiguration: this.receiptConfiguration,
+          systemPreferences: this.systemPreferences,
+        })
+      );
+    } catch (e) {
+      console.warn('Could not persist to localStorage:', e);
+    }
+  }
+
   public purgePrototypeData(): void {
     const PROTOTYPE_IDS = new Set([
       'cust-01', 'cust-02', 'cust-03', 'cust-04', 'cust-05',
       'tx-001', 'tx-002', 'tx-003', 'tx-004', 'tx-005',
       'pmt-001', 'pmt-002', 'pmt-003', 'pmt-004', 'pmt-005',
       'wholesaler-01', 'wholesaler-02', 'ws-01', 'ws-02',
-      'user-owner-01',
       'led-001', 'led-002', 'led-003', 'led-004', 'led-005', 'led-006', 'led-007', 'led-008', 'led-009',
     ]);
     this.customers = this.customers.filter((c) => !PROTOTYPE_IDS.has(c.id));
@@ -125,7 +203,7 @@ class InMemoryDatabase {
     this.payments = this.payments.filter((p) => !PROTOTYPE_IDS.has(p.id));
     this.wholesalers = this.wholesalers.filter((w) => !PROTOTYPE_IDS.has(w.id));
     this.ledgerEntries = this.ledgerEntries.filter((l) => !PROTOTYPE_IDS.has(l.id));
-    this.users = this.users.filter((u) => !PROTOTYPE_IDS.has(u.id) && u.email !== 'owner@gmail.com' && u.email !== 'admin@gmail.com');
+    this.users = this.users.filter((u) => !PROTOTYPE_IDS.has(u.id));
   }
 
   // USERS
@@ -152,6 +230,7 @@ class InMemoryDatabase {
   }
 
   public notifyChange(): void {
+    this.persistToLocalStorage();
     this.changeListeners.forEach((listener) => {
       try {
         listener();
@@ -214,6 +293,11 @@ class InMemoryDatabase {
   }
 
   public deleteUser(id: string): boolean {
+    const user = this.users.find((u) => u.id === id);
+    if (!user) return false;
+    if (user.role === UserRole.ADMIN || user.email === 'samirpc187@gmail.com') {
+      throw new Error('System Administrator account cannot be deleted.');
+    }
     const index = this.users.findIndex((u) => u.id === id);
     if (index === -1) return false;
     this.users.splice(index, 1);

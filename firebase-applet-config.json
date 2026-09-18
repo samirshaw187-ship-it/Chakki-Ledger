@@ -1,12 +1,12 @@
 {
-  "projectId": "chakki-ledger",
-  "appId": "1:640995533932:web:7c713435ede46b8a1c2449",
-  "apiKey": "AIzaSyDm3PF5LLtuPtKljmpvfudec5RLTgk0A7I",
-  "authDomain": "chakki-ledger.firebaseapp.com",
+  "projectId": "protean-notch-1fs6l",
+  "appId": "1:454275231595:web:27713229d2e55e5272662e",
+  "apiKey": "AIzaSyB0qEV4N8VGdk3MIXcaHjG0u8CnYvi1cBU",
+  "authDomain": "protean-notch-1fs6l.firebaseapp.com",
   "firestoreDatabaseId": "ai-studio-chakkiledger-26437446-f42d-47b4-8e32-0b97ec4df365",
-  "storageBucket": "chakki-ledger.firebasestorage.app",
-  "messagingSenderId": "640995533932",
+  "storageBucket": "protean-notch-1fs6l.firebasestorage.app",
+  "messagingSenderId": "454275231595",
   "measurementId": "",
-  "oAuthClientId": "640995533932-bdnisl9fnb45eh0vrenkrqgjedfk7afq.apps.googleusercontent.com",
+  "oAuthClientId": "454275231595-8jnuqctfn53elasu0m781cm8nq1993ph.apps.googleusercontent.com",
   "recaptchaSiteKey": ""
 }

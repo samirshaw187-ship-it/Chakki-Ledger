@@ -33,73 +33,85 @@ export const ApprovalPendingModal: React.FC<ApprovalPendingModalProps> = ({
     text: string;
   } | null>(null);
 
-  // Set up real-time listener for Firestore status updates
+  // Set up real-time listener for status updates (Local DB + Firestore when enabled)
   useEffect(() => {
     if (!isOpen || !pendingUser?.email) return;
 
     const cleanEmail = pendingUser.email.trim().toLowerCase();
 
-    // 1. Check if already approved in memory or Firestore
-    const localUser = dbRepository.getUserByEmail(cleanEmail);
-    if (localUser && localUser.isApproved && localUser.approvalStatus === 'APPROVED') {
-      setApprovedUserData(localUser);
-      setCheckStatusMessage({
-        type: 'approved',
-        text: 'Great news! Your account has been approved by the Administrator. You can now access your Chakki Ledger.',
-      });
-      return;
-    }
-
-    // 2. Real-time Firestore document listener
-    let unsubscribe: (() => void) | undefined;
-    try {
-      if (pendingUser.id) {
-        const userDocRef = doc(db, 'users', pendingUser.id);
-        unsubscribe = onSnapshot(userDocRef, (snap) => {
-          if (snap.exists()) {
-            const data = snap.data() as UserType;
-            dbRepository.updateUser(data.id, data);
-            if (data.isApproved && data.approvalStatus === 'APPROVED') {
-              setApprovedUserData(data);
-              setCheckStatusMessage({
-                type: 'approved',
-                text: 'Great news! Your account has been approved by the Administrator. You can now access your Chakki Ledger.',
-              });
-            } else if (data.approvalStatus === 'REJECTED') {
-              setCheckStatusMessage({
-                type: 'rejected',
-                text: 'Your registration request was reviewed and rejected by the Administrator.',
-              });
-            }
-          }
+    const checkLocalStatus = () => {
+      const localUser = dbRepository.getUserByEmail(cleanEmail);
+      if (localUser && localUser.isApproved && localUser.approvalStatus === 'APPROVED') {
+        setApprovedUserData(localUser);
+        setCheckStatusMessage({
+          type: 'approved',
+          text: 'Great news! Your account has been approved by the Administrator. You can now access your Chakki Ledger.',
         });
-      } else {
-        const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
-        unsubscribe = onSnapshot(q, (snap) => {
-          if (!snap.empty) {
-            const data = snap.docs[0].data() as UserType;
-            dbRepository.addUser(data);
-            if (data.isApproved && data.approvalStatus === 'APPROVED') {
-              setApprovedUserData(data);
-              setCheckStatusMessage({
-                type: 'approved',
-                text: 'Great news! Your account has been approved by the Administrator. You can now access your Chakki Ledger.',
-              });
-            } else if (data.approvalStatus === 'REJECTED') {
-              setCheckStatusMessage({
-                type: 'rejected',
-                text: 'Your registration request was reviewed and rejected by the Administrator.',
-              });
-            }
-          }
+      } else if (localUser && localUser.approvalStatus === 'REJECTED') {
+        setCheckStatusMessage({
+          type: 'rejected',
+          text: 'Your registration request was reviewed and rejected by the Administrator.',
         });
       }
-    } catch (err) {
-      console.warn('Real-time listener setup error in ApprovalPendingModal:', err);
+    };
+
+    // 1. Immediate local check & local subscription
+    checkLocalStatus();
+    const unsubLocal = dbRepository.subscribe(checkLocalStatus);
+
+    // 2. Real-time Firestore document listener only if Firebase is connected
+    let unsubFirestore: (() => void) | undefined;
+    if (FirestoreSyncService.isFirebaseEnabled()) {
+      try {
+        if (pendingUser.id) {
+          const userDocRef = doc(db, 'users', pendingUser.id);
+          unsubFirestore = onSnapshot(userDocRef, (snap) => {
+            if (snap.exists()) {
+              const data = snap.data() as UserType;
+              dbRepository.updateUser(data.id, data);
+              if (data.isApproved && data.approvalStatus === 'APPROVED') {
+                setApprovedUserData(data);
+                setCheckStatusMessage({
+                  type: 'approved',
+                  text: 'Great news! Your account has been approved by the Administrator. You can now access your Chakki Ledger.',
+                });
+              } else if (data.approvalStatus === 'REJECTED') {
+                setCheckStatusMessage({
+                  type: 'rejected',
+                  text: 'Your registration request was reviewed and rejected by the Administrator.',
+                });
+              }
+            }
+          });
+        } else {
+          const q = query(collection(db, 'users'), where('email', '==', cleanEmail));
+          unsubFirestore = onSnapshot(q, (snap) => {
+            if (!snap.empty) {
+              const data = snap.docs[0].data() as UserType;
+              dbRepository.addUser(data);
+              if (data.isApproved && data.approvalStatus === 'APPROVED') {
+                setApprovedUserData(data);
+                setCheckStatusMessage({
+                  type: 'approved',
+                  text: 'Great news! Your account has been approved by the Administrator. You can now access your Chakki Ledger.',
+                });
+              } else if (data.approvalStatus === 'REJECTED') {
+                setCheckStatusMessage({
+                  type: 'rejected',
+                  text: 'Your registration request was reviewed and rejected by the Administrator.',
+                });
+              }
+            }
+          });
+        }
+      } catch (err) {
+        console.warn('Real-time listener setup note in ApprovalPendingModal:', err);
+      }
     }
 
     return () => {
-      if (unsubscribe) unsubscribe();
+      unsubLocal();
+      if (unsubFirestore) unsubFirestore();
     };
   }, [isOpen, pendingUser]);
 
@@ -258,7 +270,7 @@ export const ApprovalPendingModal: React.FC<ApprovalPendingModalProps> = ({
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                Firestore Live Listener Active
+                {FirestoreSyncService.isFirebaseEnabled() ? 'Firestore Live Listener Active' : 'Standalone Local Engine Active'}
               </span>
             </div>
           </div>
@@ -267,7 +279,7 @@ export const ApprovalPendingModal: React.FC<ApprovalPendingModalProps> = ({
         {/* Informative Guidance */}
         {checkStatusMessage?.type !== 'approved' && (
           <div className="bg-stone-50 border border-stone-200 rounded-xl p-3 text-[11px] text-stone-600 leading-relaxed">
-            <span className="font-semibold text-stone-800">How approval works:</span> The System Administrator (<span className="font-mono text-stone-700">samirpc187@gmail.com</span>) can approve your account from the Admin Portal &gt; Users tab, or by updating <span className="font-mono text-stone-700">approvalStatus: &quot;APPROVED&quot;</span> in the Firebase Console. When approved, this screen will automatically turn green!
+            <span className="font-semibold text-stone-800">How approval works:</span> The System Administrator (<span className="font-mono text-stone-700">samirpc187@gmail.com</span>) can approve your account from the Admin Portal &gt; Users tab. When approved, this screen will automatically update!
           </div>
         )}
 

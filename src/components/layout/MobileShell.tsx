@@ -60,7 +60,6 @@ export const MobileShell: React.FC<MobileShellProps> = ({
         pageTitle={getPageTitle(activePath)}
         activeRole={activeRole}
         userName={userName}
-        onToggleLayout={onToggleLayout}
         onProfileClick={() => setIsProfileModalOpen(true)}
       />
 
