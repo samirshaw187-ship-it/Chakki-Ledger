@@ -559,7 +559,7 @@ export class PaymentService {
   ): { original: Payment; adjustmentPayment: Payment; summary: string } {
     if (!hasPermission(actor.role, Permission.CORRECT_TRANSACTION)) {
       throw new Error(
-        'Unauthorized: Your role does not possess permission to correct financial payments. Only Owner or Accountant can perform corrections.'
+        'Unauthorized: Your role does not possess permission to correct financial payments. Only Owner or Admin can perform corrections.'
       );
     }
 
@@ -703,7 +703,7 @@ export class PaymentService {
   ): { reversedPayment: Payment; summary: string } {
     if (!hasPermission(actor.role, Permission.REVERSE_TRANSACTION)) {
       throw new Error(
-        'Unauthorized: Your role does not possess permission to reverse payments. Only Owner or Accountant can perform reversals.'
+        'Unauthorized: Your role does not possess permission to reverse payments. Only Owner or Admin can perform reversals.'
       );
     }
 

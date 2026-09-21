@@ -36,6 +36,7 @@ import { LoginView } from './views/LoginView';
 import { TransactionCard } from './components/domain/TransactionCard';
 import { AccessDenied } from './components/domain/AccessDenied';
 import { dbRepository } from './db/in-memory-db';
+import { FirebaseSyncService } from './lib/firebase-sync.service';
 import { ArrowLeft } from 'lucide-react';
 
 function MainApp() {
@@ -51,25 +52,16 @@ function MainApp() {
   const [currentPath, setCurrentPath] = useState<string>('/app/home');
   const [isMobileLayout, setIsMobileLayout] = useState<boolean>(true);
 
-  // Synchronize layout mode and guard roles
+  // Initialize real-time synchronization with Firestore on component mount
   useEffect(() => {
-    if (activeRole === UserRole.OWNER) {
-      setIsMobileLayout(true);
-      if (currentPath.startsWith('/admin') || currentPath === '/app/audit-logs') {
-        setCurrentPath('/app/home');
-      }
-    } else if (activeRole === UserRole.ADMIN && currentPath === '/app/home') {
-      setIsMobileLayout(false);
-      setCurrentPath('/admin/dashboard');
-    }
-  }, [activeRole, currentPath]);
+    const unsub = FirebaseSyncService.initAllRealtimeListeners();
+    return () => {
+      unsub();
+    };
+  }, []);
 
   // Synchronize role switch with AuthService and auto-navigate if route is forbidden
   const handleRoleChange = (newRole: UserRole) => {
-    // Security: Shop Owner cannot escalate privileges to Admin
-    if (activeRole === UserRole.OWNER && newRole === UserRole.ADMIN) {
-      return;
-    }
     loginAsRole(newRole);
     if (!canAccessRoute(currentPath, newRole)) {
       const defaultPath = ROLE_METADATA[newRole]?.defaultPath || '/app/home';
@@ -83,11 +75,6 @@ function MainApp() {
   };
 
   const handleNavigate = (path: string) => {
-    if (activeRole === UserRole.OWNER && (path.startsWith('/admin') || path === '/app/audit-logs')) {
-      setCurrentPath('/app/home');
-      setIsMobileLayout(true);
-      return;
-    }
     setCurrentPath(path);
     // If navigating to admin route, switch to admin layout automatically
     if (path.startsWith('/admin')) {
@@ -103,15 +90,9 @@ function MainApp() {
   };
 
   const toggleLayoutMode = () => {
-    // Security: Shop Owner is strictly restricted to mobile view
-    if (activeRole === UserRole.OWNER) {
-      setIsMobileLayout(true);
-      setCurrentPath('/app/home');
-      return;
-    }
     if (isMobileLayout) {
       setIsMobileLayout(false);
-      setCurrentPath('/admin/dashboard');
+      setCurrentPath('/admin/users');
     } else {
       setIsMobileLayout(true);
       setCurrentPath('/app/home');
@@ -125,7 +106,7 @@ function MainApp() {
         onLoginSuccess={(loggedRole) => {
           if (loggedRole === UserRole.ADMIN) {
             setIsMobileLayout(false);
-            setCurrentPath('/admin/dashboard');
+            setCurrentPath('/admin/users');
           } else {
             setIsMobileLayout(true);
             setCurrentPath('/app/home');

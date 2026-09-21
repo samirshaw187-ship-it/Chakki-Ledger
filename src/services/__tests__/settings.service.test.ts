@@ -4,7 +4,6 @@ import { SettingsService } from '../settings.service';
 import { UserRole } from '../../types';
 
 const owner = { id: 'usr-owner-test', name: 'Owner', role: UserRole.OWNER, phone: '9999999999' } as any;
-const unauthorizedUser = { id: 'usr-unauthorized-test', name: 'Unauthorized', role: 'OPERATOR' as any, phone: '9999999998' } as any;
 
 describe('SettingsService', () => {
   it('updates a rate for future transactions and logs the change', () => {
@@ -16,9 +15,9 @@ describe('SettingsService', () => {
     SettingsService.updateRate('rollAttaSellingRate', before, owner, 'Reset for test');
   });
 
-  it('rejects negative rates and unauthorized staff changes', () => {
+  it('rejects negative rates and unauthorized role changes', () => {
     assert.throws(() => SettingsService.updateRate('ricePurchaseRate', -5, owner, 'Bad value'));
-    assert.throws(() => SettingsService.updateRate('ricePurchaseRate', 23, unauthorizedUser, 'Unauthorized update'));
+    assert.throws(() => SettingsService.updateRate('ricePurchaseRate', 23, { ...owner, role: 'UNAUTHORIZED' as any }, 'Unauthorized update'));
   });
 
   it('stores and returns the business profile and receipt settings', () => {

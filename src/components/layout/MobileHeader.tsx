@@ -1,6 +1,6 @@
 import React from 'react';
 import { UserRole } from '../../types';
-import { User as UserIcon } from 'lucide-react';
+import { User as UserIcon, Monitor } from 'lucide-react';
 
 export interface MobileHeaderProps {
   pageTitle: string;
@@ -14,6 +14,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
   pageTitle,
   activeRole,
   userName,
+  onToggleLayout,
   onProfileClick,
 }) => {
   return (
@@ -34,8 +35,21 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right: User/Profile Icon */}
+        {/* Right: Controls & User/Profile Icon */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Layout Toggle (Switch to Desktop Admin) */}
+          {onToggleLayout && (
+            <button
+              type="button"
+              onClick={onToggleLayout}
+              className="p-1.5 rounded-lg border border-stone-200 text-stone-600 hover:bg-stone-50 transition-colors"
+              title="Preview Desktop Back-Office Admin Shell"
+              aria-label="Switch to Desktop Admin"
+            >
+              <Monitor className="w-4 h-4" />
+            </button>
+          )}
+
           {/* User / Profile button */}
           <button
             type="button"
@@ -48,7 +62,7 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
               {userName ? userName.charAt(0).toUpperCase() : <UserIcon className="w-3.5 h-3.5" />}
             </div>
             <span className="text-[11px] font-bold text-stone-700 hidden xs:inline pr-1">
-              {activeRole === UserRole.OWNER ? 'Owner' : 'Admin'}
+              {activeRole === 'OWNER' ? 'Owner' : activeRole === 'STAFF' ? 'Staff' : 'Acct'}
             </span>
           </button>
         </div>

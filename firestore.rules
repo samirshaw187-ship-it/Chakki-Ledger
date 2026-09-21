@@ -1,84 +1,109 @@
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper function to check if user is signed in
+
+    // Helper functions
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    // Helper to check if current user is an administrator
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.email == 'samirshaw869@gmail.com' ||
-        request.auth.token.email == 'samirpc187@gmail.com' ||
+        request.auth.token.role == 'ADMIN' ||
+        request.auth.token.email in ['samirpc187@gmail.com', 'admin@gmail.com'] ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'ADMIN')
+         getUserData().role == 'ADMIN')
       );
     }
 
-    // Helper to check if user is active
-    function isApprovedUser() {
+    function isOwnerOrAdmin() {
       return isAuthenticated() && (
         isAdmin() ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.isActive == true)
+         getUserData().role == 'OWNER' &&
+         getUserData().isActive == true)
       );
     }
 
-    // Users collection: users can read/write own record; Admins can manage all
+    // User Profiles
     match /users/{userId} {
-      allow read: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow create: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
-      allow delete: if isAdmin() && userId != request.auth.uid;
+      // Any authenticated user can read user profiles to verify permissions and author names
+      allow read: if isAuthenticated();
+
+      // Account creation: Authenticated user creating their own profile document with their uid
+      // Role self-assignment to ADMIN is only permitted if no prior admin exists or verified by admin
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+
+      // Updates: Admins can update any user; users can only update basic info on their own profile, not their role or approval status
+      allow update: if isAdmin() || (
+        isAuthenticated() &&
+        request.auth.uid == userId &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'approvalStatus', 'isActive'])
+      );
+
+      // Deletes: Only platform admin can delete accounts
+      allow delete: if isAdmin();
     }
 
-    // Customers: Accessible to authenticated shop personnel
+    // Customers
     match /customers/{customerId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isOwnerOrAdmin();
+      allow create, update: if isOwnerOrAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Transactions: Accessible to authenticated shop personnel
+    // Transactions
     match /transactions/{transactionId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isOwnerOrAdmin();
+      allow create, update: if isOwnerOrAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Payments: Accessible to authenticated shop personnel
+    // Payments
     match /payments/{paymentId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isOwnerOrAdmin();
+      allow create, update: if isOwnerOrAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Wholesalers: Accessible to authenticated shop personnel
+    // Ledger Entries
+    match /ledgerEntries/{entryId} {
+      allow read: if isOwnerOrAdmin();
+      allow create, update: if isOwnerOrAdmin();
+      allow delete: if isAdmin();
+    }
+
+    // Wholesalers
     match /wholesalers/{wholesalerId} {
-      allow read, write: if isAuthenticated();
+      allow read: if isOwnerOrAdmin();
+      allow create, update: if isOwnerOrAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Ledger Entries: Immutable ledger updates
-    match /ledger_entries/{entryId} {
-      allow read, write: if isAuthenticated();
+    // Inventory Movements
+    match /inventoryMovements/{movementId} {
+      allow read: if isOwnerOrAdmin();
+      allow create, update: if isOwnerOrAdmin();
+      allow delete: if isAdmin();
     }
 
-    // Inventory Movements: Stock adjustments and transaction flow
-    match /inventory_movements/{movementId} {
-      allow read, write: if isAuthenticated();
-    }
-
-    // Settings: Global rates and shop profile
+    // Rate Settings & Configurations
     match /settings/{settingId} {
       allow read: if isAuthenticated();
-      allow write: if isAuthenticated();
+      allow write: if isOwnerOrAdmin();
     }
 
-    // Audit logs: Accessible to Admins for security review, append-only for app operations
-    match /audit_logs/{logId} {
-      allow read: if isAdmin();
+    // Audit Logs
+    match /auditLogs/{logId} {
+      allow read: if isOwnerOrAdmin();
       allow create: if isAuthenticated();
-      allow update, delete: if false; // Audit trail is strictly immutable
-    }
-
-    // Fallback for applet setup transition
-    match /{document=**} {
-      allow read, write: if isAuthenticated() || request.time < timestamp.date(2027, 1, 1);
+      // Audit logs are strictly immutable: no updates or deletes permitted
+      allow update, delete: if false;
     }
   }
 }

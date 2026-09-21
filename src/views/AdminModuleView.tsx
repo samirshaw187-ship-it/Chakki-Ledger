@@ -6,14 +6,12 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { dbRepository } from '../db/in-memory-db';
 import { AuditService } from '../services/audit.service';
 import { RateService } from '../services/rate.service';
-import { SEED_USERS } from '../db/seed-data';
-import { ShieldCheck, HardDriveDownload, Download, Plus, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, HardDriveDownload, Download, Plus, CheckCircle2, Receipt, Truck } from 'lucide-react';
 import { UserManagementView } from './UserManagementView';
 import { AdminCustomersView } from './AdminCustomersView';
 import { AdminAuditLogsView } from './admin/AdminAuditLogsView';
 import { SettingsService, RateFieldName } from '../services/settings.service';
 import { useAuth } from '../modules/auth/AuthContext';
-import { ChangePasswordCard } from '../components/domain/ChangePasswordCard';
 
 export interface AdminModuleViewProps {
   modulePath: string;
@@ -45,36 +43,48 @@ export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, on
           description="Central source of truth for all milling, rice trading, and payment entries"
           breadcrumbs={['Admin', 'Transactions']}
         />
-        <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-2xs">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-stone-50 border-b border-stone-200 font-semibold text-stone-600 uppercase tracking-wider">
-              <tr>
-                <th className="p-3">Txn #</th>
-                <th className="p-3">Timestamp</th>
-                <th className="p-3">Customer</th>
-                <th className="p-3">Type</th>
-                <th className="p-3">Applied Rate Snapshot</th>
-                <th className="p-3 text-right">Net Amount</th>
-                <th className="p-3 text-center">Status</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100">
-              {transactions.map((tx) => (
-                <tr key={tx.id} className="hover:bg-stone-50/70">
-                  <td className="p-3 font-mono font-bold text-stone-700">{tx.transactionNumber}</td>
-                  <td className="p-3 text-stone-500">{new Date(tx.date).toLocaleString('en-IN')}</td>
-                  <td className="p-3 font-medium text-stone-900">{tx.customerName || 'General Customer'}</td>
-                  <td className="p-3 font-medium text-stone-700">{tx.type.replace(/_/g, ' ')}</td>
-                  <td className="p-3 font-mono text-stone-500">
-                    {tx.items && tx.items[0] ? `${tx.items[0].quantity} ${tx.items[0].unit} @ ₹${tx.items[0].ratePerUnit}/${tx.items[0].unit}` : '-'}
-                  </td>
-                  <td className="p-3 text-right font-bold text-stone-900">₹{(tx.netAmount ?? 0).toFixed(2)}</td>
-                  <td className="p-3 text-center"><StatusBadge status={tx.status} /></td>
+        {transactions.length === 0 ? (
+          <div className="bg-white rounded-xl border border-stone-200 p-8 text-center shadow-2xs">
+            <div className="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center mx-auto mb-3 text-stone-400">
+              <Receipt className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-bold text-stone-800">No transactions recorded yet</p>
+            <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
+              The register is clean. Transactions created through the counter or mobile interface will be recorded here in the master ledger.
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-xl border border-stone-200 overflow-hidden shadow-2xs">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-stone-50 border-b border-stone-200 font-semibold text-stone-600 uppercase tracking-wider">
+                <tr>
+                  <th className="p-3">Txn #</th>
+                  <th className="p-3">Timestamp</th>
+                  <th className="p-3">Customer</th>
+                  <th className="p-3">Type</th>
+                  <th className="p-3">Applied Rate Snapshot</th>
+                  <th className="p-3 text-right">Net Amount</th>
+                  <th className="p-3 text-center">Status</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-stone-100">
+                {transactions.map((tx) => (
+                  <tr key={tx.id} className="hover:bg-stone-50/70">
+                    <td className="p-3 font-mono font-bold text-stone-700">{tx.transactionNumber}</td>
+                    <td className="p-3 text-stone-500">{new Date(tx.date).toLocaleString('en-IN')}</td>
+                    <td className="p-3 font-medium text-stone-900">{tx.customerName || 'General Customer'}</td>
+                    <td className="p-3 font-medium text-stone-700">{tx.type.replace(/_/g, ' ')}</td>
+                    <td className="p-3 font-mono text-stone-500">
+                      {tx.items && tx.items[0] ? `${tx.items[0].quantity} ${tx.items[0].unit} @ ₹${tx.items[0].ratePerUnit}/${tx.items[0].unit}` : '-'}
+                    </td>
+                    <td className="p-3 text-right font-bold text-stone-900">₹{(tx.netAmount ?? 0).toFixed(2)}</td>
+                    <td className="p-3 text-center"><StatusBadge status={tx.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     );
   }
@@ -158,11 +168,6 @@ export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, on
             </div>
           </Card>
         </div>
-
-        {/* Admin Password Change Card */}
-        <div className="max-w-2xl">
-          <ChangePasswordCard />
-        </div>
       </div>
     );
   }
@@ -181,24 +186,36 @@ export const AdminModuleView: React.FC<AdminModuleViewProps> = ({ modulePath, on
           description="Rice reselling partners, bulk grain dispatch, and wholesale accounts"
           breadcrumbs={['Admin', 'Wholesalers']}
         />
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {wholesalers.map((w) => (
-            <Card key={w.id} title={w.name} subtitle={w.companyName || undefined}>
-              <div className="space-y-2 text-xs text-stone-600">
-                <p><strong>Address:</strong> {w.address || 'Central Mandi'}</p>
-                <p><strong>Phone:</strong> {w.phone || '-'}</p>
-                <div className="flex justify-between pt-2 border-t border-stone-100">
-                  <span>Total Rice Purchased:</span>
-                  <span className="font-mono font-semibold text-stone-900">{w.totalRicePurchasedKg} kg</span>
+        {wholesalers.length === 0 ? (
+          <div className="bg-white rounded-xl border border-stone-200 p-8 text-center shadow-2xs">
+            <div className="w-12 h-12 rounded-full bg-stone-100 flex items-center justify-center mx-auto mb-3 text-stone-400">
+              <Truck className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-bold text-stone-800">No wholesalers registered yet</p>
+            <p className="text-xs text-stone-500 mt-1 max-w-sm mx-auto">
+              Wholesale buyers, rice mill partners, and mandi traders will appear here once registered.
+            </p>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {wholesalers.map((w) => (
+              <Card key={w.id} title={w.name} subtitle={w.companyName || undefined}>
+                <div className="space-y-2 text-xs text-stone-600">
+                  <p><strong>Address:</strong> {w.address || 'Central Mandi'}</p>
+                  <p><strong>Phone:</strong> {w.phone || '-'}</p>
+                  <div className="flex justify-between pt-2 border-t border-stone-100">
+                    <span>Total Rice Purchased:</span>
+                    <span className="font-mono font-semibold text-stone-900">{w.totalRicePurchasedKg} kg</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Receivable Dues:</span>
+                    <span className="font-mono font-bold text-emerald-800">₹{(w.totalOutstandingPayment ?? 0).toFixed(2)}</span>
+                  </div>
                 </div>
-                <div className="flex justify-between">
-                  <span>Receivable Dues:</span>
-                  <span className="font-mono font-bold text-emerald-800">₹{(w.totalOutstandingPayment ?? 0).toFixed(2)}</span>
-                </div>
-              </div>
-            </Card>
-          ))}
-        </div>
+              </Card>
+            ))}
+          </div>
+        )}
       </div>
     );
   }

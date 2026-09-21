@@ -2,10 +2,72 @@ import assert from 'node:assert/strict';
 import { dbRepository } from '../../db/in-memory-db';
 import { InventoryService } from '../inventory.service';
 import { RiceTradingService } from '../rice-trading.service';
-import { InventoryItemCode, UserRole } from '../../types';
+import {
+  InventoryItemCode,
+  UserRole,
+  Transaction,
+  TransactionType,
+  TransactionStatus,
+  ItemType,
+  GrainType,
+  GrainUnit,
+  CustomerStatus,
+  ItemDirection,
+} from '../../types';
 
-const owner = dbRepository.getUsers().find((user) => user.role === UserRole.OWNER);
-assert.ok(owner, 'Seed owner is required');
+// Set up test owner locally
+const owner = dbRepository.addUser({
+  name: 'Test Owner',
+  role: UserRole.OWNER,
+  phone: '9988776655',
+  isActive: true,
+  approvalStatus: 'APPROVED',
+});
+
+const testCustomer = dbRepository.addCustomer({
+  customerCode: 'CUST-00001',
+  name: 'Rice Seller Customer',
+  phone: '9876543210',
+  currentDueAmount: 0,
+  wheatBalanceKg: 0,
+  riceCreditAmount: 0,
+  status: CustomerStatus.ACTIVE,
+  isActive: true,
+});
+
+// Add initial customer rice purchase transaction
+const testPurchaseTx: Transaction = {
+  id: 'tx-rice-purchase-test',
+  transactionNumber: 'TXN-RICE-001',
+  customerId: testCustomer.id,
+  customerName: testCustomer.name,
+  date: new Date().toISOString(),
+  type: TransactionType.RICE_PURCHASE,
+  grossAmount: 420,
+  discountAmount: 0,
+  netAmount: 420,
+  paidAmount: 420,
+  balanceDelta: 0,
+  paymentStatus: 'PAID',
+  status: TransactionStatus.COMPLETED,
+  createdById: owner.id,
+  items: [
+    {
+      id: 'item-rice-p1',
+      transactionId: 'tx-rice-purchase-test',
+      grainType: GrainType.RATION_RICE,
+      itemType: ItemType.RICE,
+      quantity: 20,
+      unit: GrainUnit.KG,
+      ratePerUnit: 21,
+      totalAmount: 420,
+      direction: ItemDirection.IN,
+    },
+  ],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+dbRepository.saveTransaction(testPurchaseTx);
 
 const purchases = RiceTradingService.getRicePurchases();
 assert.ok(purchases.some((purchase) => purchase.purchaseRate === 21 && purchase.totalValue === 420), 'Rice purchase history must preserve stored rate and value');

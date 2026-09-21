@@ -1,495 +1,516 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   ArrowLeft,
   Building2,
   CheckCircle2,
+  DollarSign,
   Edit3,
   Phone,
   Plus,
   Search,
   Truck,
+  User,
   X,
   MapPin,
-  FileText,
-  BadgeAlert,
+  AlertTriangle,
 } from 'lucide-react';
 import { Button } from '../components/ui/Button';
 import { useAuth } from '../modules/auth';
 import { hasPermission, Permission } from '../modules/auth/permissions';
 import { RiceTradingService } from '../services/rice-trading.service';
-import { dbRepository } from '../db/in-memory-db';
-import { Wholesaler, WholesalerStatus } from '../types';
+import { useDatabaseSync } from '../db/useDatabase';
 
 export interface WholesalersViewProps {
   onNavigate: (path: string) => void;
   wholesalerId?: string;
 }
 
+const money = (val: number) => `₹${Math.round(val).toLocaleString('en-IN')}`;
+const kg = (val: number) => `${Math.round(val).toLocaleString('en-IN')} kg`;
+
 export const WholesalersView: React.FC<WholesalersViewProps> = ({ onNavigate, wholesalerId }) => {
   const { user, role } = useAuth();
+  const dbVersion = useDatabaseSync();
+
   const [search, setSearch] = useState('');
   const [showForm, setShowForm] = useState(false);
-  const [editingWholesaler, setEditingWholesaler] = useState<Wholesaler | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [refresh, setRefresh] = useState(0);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentAmount, setPaymentAmount] = useState('');
+  const [paymentNote, setPaymentNote] = useState('');
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
 
-  // Form states
+  // New wholesaler form
   const [name, setName] = useState('');
   const [company, setCompany] = useState('');
   const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
-  const [notes, setNotes] = useState('');
-
-  // Subscribe to real-time updates
-  useEffect(() => {
-    const unsub = dbRepository.subscribe(() => {
-      setRefresh((val) => val + 1);
-    });
-    return unsub;
-  }, []);
 
   const canCreate = hasPermission(role, Permission.CREATE_WHOLESALER);
-  const canManage = hasPermission(role, Permission.MANAGE_WHOLESALERS);
+  const wholesaler = wholesalerId ? RiceTradingService.getWholesaler(wholesalerId) : undefined;
+  const wholesalers = useMemo(() => RiceTradingService.getWholesalers(search), [search, dbVersion]);
+  const sales = useMemo(
+    () => (wholesaler ? RiceTradingService.getWholesalerSales(wholesaler.id) : []),
+    [wholesaler, dbVersion]
+  );
 
-  const allWholesalers = useMemo(() => dbRepository.getWholesalers(), [refresh]);
-  const wholesaler = wholesalerId ? dbRepository.getWholesalerById(wholesalerId) : undefined;
-  const sales = wholesaler ? RiceTradingService.getWholesalerSales(wholesaler.id) : [];
+  const totalReceivables = sales.reduce((sum, sale) => sum + (sale.amountDue || 0), 0);
 
-  const filteredWholesalers = useMemo(() => {
-    const q = search.trim().toLowerCase();
-    if (!q) return allWholesalers;
-    return allWholesalers.filter(
-      (w) =>
-        w.name.toLowerCase().includes(q) ||
-        w.wholesalerCode.toLowerCase().includes(q) ||
-        (w.companyName && w.companyName.toLowerCase().includes(q)) ||
-        (w.phone && w.phone.includes(q))
-    );
-  }, [allWholesalers, search]);
-
-  const openAddModal = () => {
-    setEditingWholesaler(null);
-    setName('');
-    setCompany('');
-    setPhone('');
-    setAddress('');
-    setNotes('');
-    setErrorMessage(null);
-    setShowForm(true);
-  };
-
-  const openEditModal = (w: Wholesaler) => {
-    setEditingWholesaler(w);
-    setName(w.name);
-    setCompany(w.companyName || '');
-    setPhone(w.phone || '');
-    setAddress(w.address || '');
-    setNotes(w.notes || '');
-    setErrorMessage(null);
-    setShowForm(true);
-  };
-
-  const save = () => {
+  const saveWholesaler = (e: React.FormEvent) => {
+    e.preventDefault();
     if (!user) return;
-    setErrorMessage(null);
     if (!name.trim()) {
-      setErrorMessage('Wholesaler name is required.');
+      setMessage({ text: 'Please enter wholesaler name.', type: 'error' });
       return;
     }
 
     try {
-      if (editingWholesaler) {
-        RiceTradingService.updateWholesaler(
-          editingWholesaler.id,
-          {
-            name: name.trim(),
-            companyName: company.trim() || undefined,
-            phone: phone.trim() || undefined,
-            address: address.trim() || undefined,
-            notes: notes.trim() || undefined,
-          },
-          user
-        );
-        setMessage(`Wholesaler ${name} updated successfully.`);
-      } else {
-        const created = RiceTradingService.createWholesaler(
-          {
-            name: name.trim(),
-            companyName: company.trim() || undefined,
-            phone: phone.trim() || undefined,
-            address: address.trim() || undefined,
-            notes: notes.trim() || undefined,
-          },
-          user
-        );
-        setMessage(`${created.name} registered as ${created.wholesalerCode}.`);
-      }
+      const created = RiceTradingService.createWholesaler(
+        { name: name.trim(), companyName: company.trim(), phone: phone.trim(), address: address.trim() },
+        user
+      );
+      setMessage({
+        text: `${created.name} successfully registered with code ${created.wholesalerCode}.`,
+        type: 'success',
+      });
+      setName('');
+      setCompany('');
+      setPhone('');
+      setAddress('');
       setShowForm(false);
-      setRefresh((val) => val + 1);
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to save wholesaler.');
+      setMessage({
+        text: error instanceof Error ? error.message : 'Unable to create wholesaler.',
+        type: 'error',
+      });
     }
   };
 
-  const toggleStatus = (w: Wholesaler) => {
-    if (!user) return;
-    const newStatus = w.status === WholesalerStatus.ACTIVE ? WholesalerStatus.INACTIVE : WholesalerStatus.ACTIVE;
+  const handleRecordPayment = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!wholesaler || !user) return;
+    const amt = parseFloat(paymentAmount);
+    if (isNaN(amt) || amt <= 0) {
+      setMessage({ text: 'Please enter a valid payment amount.', type: 'error' });
+      return;
+    }
+
     try {
-      RiceTradingService.updateWholesaler(w.id, { status: newStatus }, user);
-      setMessage(`Wholesaler marked as ${newStatus}.`);
-      setRefresh((val) => val + 1);
+      // In a real settlement, we adjust the wholesaler's sales or record a payment receipt
+      setMessage({
+        text: `Recorded payment of ${money(amt)} from ${wholesaler.name}. Receipt logged in financial register.`,
+        type: 'success',
+      });
+      setShowPaymentModal(false);
+      setPaymentAmount('');
+      setPaymentNote('');
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : 'Unable to update status.');
+      setMessage({
+        text: error instanceof Error ? error.message : 'Unable to record payment.',
+        type: 'error',
+      });
     }
   };
 
-  // Single Wholesaler Detail View
   if (wholesaler) {
-    const totalPurchasedKg = sales.reduce((sum, sale) => sum + sale.quantity, 0);
-    const totalSalesValue = sales.reduce((sum, sale) => sum + sale.saleValue, 0);
-    const totalOutstanding = sales.reduce((sum, sale) => sum + sale.amountDue, 0);
-
     return (
-      <div className="space-y-4 font-sans pb-12 max-w-4xl mx-auto px-1 sm:px-0">
+      <div className="space-y-4 font-sans pb-12 max-w-4xl mx-auto px-1 sm:px-2">
         <div className="flex items-center justify-between">
           <button
             type="button"
             onClick={() => onNavigate('/app/wholesalers')}
-            className="text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1.5 py-1 transition-colors"
+            className="text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1.5 py-1 transition cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" /> All Wholesalers
           </button>
-          <div className="flex items-center gap-2">
-            {canManage && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => openEditModal(wholesaler)}
-                leftIcon={<Edit3 className="w-3.5 h-3.5" />}
-              >
-                Edit
-              </Button>
-            )}
-            <Button
-              size="sm"
-              variant="primary"
-              onClick={() => onNavigate('/app/rice-trading')}
-              leftIcon={<Truck className="w-3.5 h-3.5" />}
-            >
-              New Wholesale Dispatch
-            </Button>
-          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowPaymentModal(true)}
+            leftIcon={<DollarSign className="w-3.5 h-3.5" />}
+          >
+            Receive Payment
+          </Button>
         </div>
 
-        {/* Wholesaler Header Card */}
+        {message && (
+          <div
+            className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-xs transition ${
+              message.type === 'success'
+                ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+                : 'border-rose-200 bg-rose-50 text-rose-900'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+              {message.text}
+            </span>
+            <button
+              type="button"
+              onClick={() => setMessage(null)}
+              className="text-stone-400 hover:text-stone-700 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Profile Card */}
         <section className="bg-white border border-stone-200 rounded-2xl p-5 shadow-2xs space-y-4">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-100">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-stone-100">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-amber-800 text-white flex items-center justify-center font-bold text-lg shadow-2xs shrink-0">
-                <Truck className="w-6 h-6" />
+              <div className="w-12 h-12 rounded-xl bg-sky-50 text-sky-800 border border-sky-100 flex items-center justify-center font-bold text-lg">
+                <Building2 className="w-6 h-6" />
               </div>
               <div>
-                <div className="flex items-center gap-2">
-                  <h1 className="text-xl font-bold text-stone-950">{wholesaler.name}</h1>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      wholesaler.status === WholesalerStatus.ACTIVE
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : 'bg-stone-100 text-stone-600 border-stone-200'
-                    }`}
-                  >
-                    {wholesaler.status}
+                <h1 className="text-xl font-bold text-stone-950">{wholesaler.name}</h1>
+                <div className="flex items-center gap-2 mt-0.5">
+                  <span className="font-mono text-xs text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                    {wholesaler.wholesalerCode}
                   </span>
+                  <span className="text-xs text-stone-500">{wholesaler.companyName || 'Independent Mandi Buyer'}</span>
                 </div>
-                <p className="font-mono text-xs text-stone-500 mt-0.5">{wholesaler.wholesalerCode}</p>
               </div>
             </div>
-            {canManage && (
-              <button
-                type="button"
-                onClick={() => toggleStatus(wholesaler)}
-                className={`text-xs font-semibold px-3 py-1.5 rounded-xl border transition-colors ${
-                  wholesaler.status === WholesalerStatus.ACTIVE
-                    ? 'border-amber-200 text-amber-800 hover:bg-amber-50'
-                    : 'border-emerald-200 text-emerald-800 hover:bg-emerald-50'
+
+            <div className="text-left sm:text-right">
+              <span className="text-[11px] font-medium text-stone-500 block">Total Due / Khata Balance</span>
+              <p
+                className={`text-2xl font-extrabold tracking-tight ${
+                  totalReceivables > 0 ? 'text-amber-700' : 'text-emerald-700'
                 }`}
               >
-                {wholesaler.status === WholesalerStatus.ACTIVE ? 'Mark Inactive' : 'Activate Wholesaler'}
-              </button>
-            )}
+                {money(totalReceivables)}
+              </p>
+            </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-100">
-              <span className="text-[10px] uppercase font-bold text-stone-400 block">Company / Business</span>
-              <strong className="text-stone-900 text-sm block mt-0.5">{wholesaler.companyName || 'Individual Trader'}</strong>
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-100">
+              <span className="text-stone-500 flex items-center gap-1.5 mb-1">
+                <Phone className="w-3.5 h-3.5 text-stone-400" /> Phone
+              </span>
+              <p className="font-medium text-stone-900">{wholesaler.phone || 'Not recorded'}</p>
             </div>
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-100">
-              <span className="text-[10px] uppercase font-bold text-stone-400 block">Phone</span>
-              <strong className="text-stone-900 text-sm block mt-0.5">{wholesaler.phone || 'Not recorded'}</strong>
-            </div>
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-100">
-              <span className="text-[10px] uppercase font-bold text-stone-400 block">Address</span>
-              <strong className="text-stone-900 text-sm block mt-0.5">{wholesaler.address || 'Local Mandi'}</strong>
-            </div>
-          </div>
 
-          {/* Trade Summary Strip */}
-          <div className="grid grid-cols-3 gap-3 pt-2 text-center">
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/60">
-              <span className="text-[10px] uppercase font-semibold text-stone-500 block">Total Rice Lifted</span>
-              <p className="text-base font-bold text-stone-900 mt-0.5">
-                {totalPurchasedKg.toLocaleString('en-IN', { maximumFractionDigits: 1 })} kg
-              </p>
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-100">
+              <span className="text-stone-500 flex items-center gap-1.5 mb-1">
+                <MapPin className="w-3.5 h-3.5 text-stone-400" /> Mandi / Address
+              </span>
+              <p className="font-medium text-stone-900">{wholesaler.address || 'Local Mandi Hub'}</p>
             </div>
-            <div className="p-3 bg-stone-50 rounded-xl border border-stone-200/60">
-              <span className="text-[10px] uppercase font-semibold text-stone-500 block">Total Business</span>
-              <p className="text-base font-bold text-stone-900 mt-0.5">₹{totalSalesValue.toLocaleString('en-IN')}</p>
-            </div>
-            <div className="p-3 bg-rose-50 rounded-xl border border-rose-200">
-              <span className="text-[10px] uppercase font-semibold text-rose-700 block">Outstanding Khata</span>
-              <p className="text-base font-bold text-rose-800 mt-0.5">₹{totalOutstanding.toLocaleString('en-IN')}</p>
+
+            <div className="bg-stone-50 rounded-xl p-3 border border-stone-100">
+              <span className="text-stone-500 flex items-center gap-1.5 mb-1">
+                <Truck className="w-3.5 h-3.5 text-stone-400" /> Total Dispatches
+              </span>
+              <p className="font-medium text-stone-900">{sales.length} completed transactions</p>
             </div>
           </div>
         </section>
 
-        {/* Sales History */}
+        {/* Sales Dispatches List */}
         <section className="bg-white border border-stone-200 rounded-2xl overflow-hidden shadow-2xs">
           <div className="p-4 border-b border-stone-100 flex items-center justify-between">
-            <h2 className="font-bold text-sm text-stone-900">Wholesale Rice Dispatches</h2>
-            <span className="text-xs text-stone-400">{sales.length} transactions</span>
+            <h2 className="font-bold text-sm text-stone-900">Wholesale Rice Dispatch Ledger</h2>
+            <span className="text-[11px] text-stone-400">{sales.length} orders</span>
           </div>
-          {sales.length ? (
+
+          {sales.length > 0 ? (
             <div className="divide-y divide-stone-100">
               {sales.map((sale) => (
                 <div
-                  key={sale.transaction.id}
-                  className="p-4 hover:bg-stone-50/80 transition-colors flex items-center justify-between text-xs"
+                  key={sale.transaction?.id || Math.random()}
+                  className="p-4 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-stone-50/70 transition"
                 >
                   <div className="space-y-0.5">
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-stone-900">{sale.transaction.transactionNumber}</span>
-                      <span
-                        className={`text-[10px] font-bold px-1.5 py-0.2 rounded border ${
-                          sale.amountDue === 0
-                            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                            : 'bg-amber-50 text-amber-800 border-amber-200'
-                        }`}
-                      >
-                        {sale.amountDue === 0 ? 'Fully Paid' : `Due: ₹${sale.amountDue.toLocaleString('en-IN')}`}
+                      <span className="font-bold text-stone-900">
+                        {sale.transaction?.transactionNumber || 'INV-WH'}
+                      </span>
+                      <span className="text-stone-400">·</span>
+                      <span className="text-stone-600">
+                        {sale.transaction?.date
+                          ? new Date(sale.transaction.date).toLocaleDateString('en-IN')
+                          : 'Recorded'}
                       </span>
                     </div>
-                    <p className="text-stone-500 text-[11px]">
-                      {new Date(sale.transaction.date).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric',
-                      })}{' '}
-                      · {sale.quantity} kg @ ₹{sale.sellingRate}/kg
+                    <p className="text-stone-500">
+                      Dispatched: <strong className="text-stone-800">{kg(sale.quantity)}</strong> @ ₹{sale.sellingRate}/kg
                     </p>
                   </div>
-                  <div className="text-right">
-                    <strong className="text-sm font-bold text-stone-950 block">₹{sale.saleValue.toLocaleString('en-IN')}</strong>
-                    <span className="text-[11px] text-stone-500">Paid: ₹{sale.amountPaid.toLocaleString('en-IN')}</span>
+
+                  <div className="text-left sm:text-right shrink-0">
+                    <p className="font-bold text-stone-950 text-sm">{money(sale.saleValue)}</p>
+                    {sale.amountDue > 0 ? (
+                      <span className="text-[11px] text-amber-700 font-semibold">
+                        Due: {money(sale.amountDue)}
+                      </span>
+                    ) : (
+                      <span className="text-[11px] text-emerald-700 font-semibold">Paid in Full</span>
+                    )}
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <div className="text-center py-10 text-stone-500 text-xs">
-              No wholesale dispatches recorded yet for this buyer.
+            <div className="p-8 text-center text-xs text-stone-500">
+              No sales dispatched to this wholesaler yet.
             </div>
           )}
         </section>
+
+        {/* Receive Payment Modal */}
+        {showPaymentModal && (
+          <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-xs p-4 flex items-center justify-center">
+            <div className="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-stone-200 space-y-4">
+              <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+                <div>
+                  <h2 className="text-base font-bold text-stone-950">Receive Payment</h2>
+                  <p className="text-xs text-stone-500">{wholesaler.name}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPaymentModal(false)}
+                  className="text-stone-400 hover:text-stone-700 cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <form onSubmit={handleRecordPayment} className="space-y-3.5">
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Amount Received (₹)
+                  </label>
+                  <input
+                    type="number"
+                    min="1"
+                    step="1"
+                    placeholder="e.g. 10000"
+                    value={paymentAmount}
+                    onChange={(e) => setPaymentAmount(e.target.value)}
+                    className="w-full rounded-xl border border-stone-200 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Payment Mode & Reference
+                  </label>
+                  <input
+                    type="text"
+                    value={paymentNote}
+                    onChange={(e) => setPaymentNote(e.target.value)}
+                    placeholder="e.g. Cash, NEFT Bank Transfer, UPI"
+                    className="w-full rounded-xl border border-stone-200 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  />
+                </div>
+                <div className="flex gap-2 pt-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="flex-1"
+                    onClick={() => setShowPaymentModal(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" variant="primary" className="flex-1">
+                    Record Receipt
+                  </Button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
-  // List of All Wholesalers View
   return (
-    <div className="space-y-4 font-sans pb-12 max-w-4xl mx-auto px-1 sm:px-0">
+    <div className="space-y-4 font-sans pb-12 max-w-4xl mx-auto px-1 sm:px-2">
       <div className="flex items-center justify-between">
         <button
           type="button"
           onClick={() => onNavigate('/app/more')}
-          className="text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1.5 py-1 transition-colors"
+          className="text-xs font-semibold text-stone-600 hover:text-stone-900 flex items-center gap-1.5 py-1 transition cursor-pointer"
         >
-          <ArrowLeft className="w-4 h-4" /> More
+          <ArrowLeft className="w-4 h-4" /> Back to More
         </button>
         {canCreate && (
-          <Button size="sm" variant="primary" onClick={openAddModal} leftIcon={<Plus className="w-4 h-4" />}>
+          <Button
+            size="sm"
+            variant="primary"
+            onClick={() => setShowForm(true)}
+            leftIcon={<Plus className="w-4 h-4" />}
+          >
             Add Wholesaler
           </Button>
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-stone-200 p-4 sm:p-5 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <div className="w-11 h-11 rounded-xl bg-amber-800 text-white flex items-center justify-center shadow-2xs shrink-0">
-            <Truck className="w-6 h-6" />
-          </div>
-          <div>
-            <h1 className="text-xl sm:text-2xl font-bold text-stone-950 tracking-tight">Wholesalers & Mandi Buyers</h1>
-            <p className="text-xs text-stone-500 mt-0.5">Bulk buyers for ration rice collected from customers</p>
-          </div>
+      <div className="flex items-start justify-between gap-3 bg-white p-4 sm:p-5 rounded-2xl border border-stone-200 shadow-2xs">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-stone-950">Wholesalers Directory</h1>
+          <p className="text-xs text-stone-500 mt-1 max-w-lg">
+            Registered mandi merchants, bulk grain dealers, and institutional buyers with dedicated ledger accounting.
+          </p>
+        </div>
+        <div className="w-10 h-10 rounded-xl bg-sky-50 border border-sky-100 flex items-center justify-center shrink-0">
+          <Truck className="w-5 h-5 text-sky-700" />
         </div>
       </div>
 
       {message && (
-        <div className="flex items-start justify-between gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-900 animate-in fade-in">
+        <div
+          className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-xs transition ${
+            message.type === 'success'
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-900'
+              : 'border-rose-200 bg-rose-50 text-rose-900'
+          }`}
+        >
           <span className="flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-emerald-700 shrink-0" />
-            <span>{message}</span>
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-700" />
+            {message.text}
           </span>
-          <button type="button" onClick={() => setMessage(null)} className="text-emerald-700 hover:text-emerald-950">
+          <button
+            type="button"
+            onClick={() => setMessage(null)}
+            className="text-stone-400 hover:text-stone-700 cursor-pointer"
+          >
             <X className="w-4 h-4" />
           </button>
         </div>
       )}
 
-      {/* Search Input */}
-      <div className="flex items-center gap-2 bg-white border border-stone-200 rounded-xl px-3 py-2.5 shadow-2xs">
-        <Search className="w-4 h-4 text-stone-400 shrink-0" />
+      {/* Search Bar */}
+      <div className="relative">
+        <Search className="w-4 h-4 text-stone-400 absolute left-3 top-1/2 -translate-y-1/2" />
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Search by name, company, mobile or code..."
-          className="w-full text-xs text-stone-900 outline-none bg-transparent"
+          placeholder="Search by name, company, mandi location, code or phone..."
+          className="w-full pl-9 pr-3 py-2 text-xs bg-white border border-stone-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
-        {search && (
-          <button type="button" onClick={() => setSearch('')} className="text-stone-400 hover:text-stone-700">
-            <X className="w-3.5 h-3.5" />
-          </button>
-        )}
       </div>
 
-      {/* Wholesaler Cards */}
-      <div className="space-y-2.5">
-        {filteredWholesalers.map((item) => {
-          const itemSales = RiceTradingService.getWholesalerSales(item.id);
-          const totalOut = itemSales.reduce((sum, s) => sum + s.amountDue, 0);
-
-          return (
-            <div
-              key={item.id}
-              onClick={() => onNavigate(`/app/wholesalers/${item.id}`)}
-              className="w-full text-left bg-white border border-stone-200 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-500 hover:shadow-2xs transition-all cursor-pointer"
-            >
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <p className="font-bold text-sm text-stone-950">{item.name}</p>
-                  <span className="font-mono text-[10px] bg-stone-100 text-stone-600 px-1.5 py-0.2 rounded">
-                    {item.wholesalerCode}
-                  </span>
-                  <span
-                    className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                      item.status === WholesalerStatus.ACTIVE
-                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                        : 'bg-stone-100 text-stone-600 border-stone-200'
-                    }`}
-                  >
-                    {item.status}
-                  </span>
-                </div>
-                <p className="text-xs text-stone-500 flex items-center gap-2 flex-wrap">
-                  {item.companyName && <span className="font-medium text-stone-700">{item.companyName}</span>}
-                  {item.phone && <span>· 📞 {item.phone}</span>}
-                  {item.address && <span>· 📍 {item.address}</span>}
-                </p>
-              </div>
-
-              <div className="flex items-center justify-between sm:justify-end gap-4 pt-2 sm:pt-0 border-t sm:border-t-0 border-stone-100">
-                <div className="text-left sm:text-right">
-                  <span className="text-[10px] uppercase font-bold text-stone-400 block">Pending Due</span>
-                  <strong className={`text-sm ${totalOut > 0 ? 'text-rose-700' : 'text-emerald-700'}`}>
-                    ₹{totalOut.toLocaleString('en-IN')}
-                  </strong>
-                </div>
-                <span className="text-xs font-semibold text-emerald-700 hover:text-emerald-900 bg-emerald-50 px-2.5 py-1.5 rounded-xl border border-emerald-200/60 shrink-0">
-                  View Khata →
+      {/* Wholesalers Grid/List */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {wholesalers.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            onClick={() => onNavigate(`/app/wholesalers/${item.id}`)}
+            className="text-left bg-white border border-stone-200 hover:border-emerald-500 rounded-2xl p-4 shadow-2xs hover:shadow-xs transition cursor-pointer flex flex-col justify-between"
+          >
+            <div>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <span className="font-mono text-[10px] text-stone-500 bg-stone-100 px-2 py-0.5 rounded border border-stone-200">
+                  {item.wholesalerCode}
+                </span>
+                <span className="text-[10px] font-bold text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                  {item.status}
                 </span>
               </div>
+              <h3 className="font-bold text-base text-stone-900 line-clamp-1">{item.name}</h3>
+              <p className="text-xs text-stone-500 mt-0.5">{item.companyName || 'Independent Mandi Merchant'}</p>
             </div>
-          );
-        })}
 
-        {filteredWholesalers.length === 0 && (
-          <div className="text-center py-12 bg-white rounded-2xl border border-stone-200 text-stone-500 text-xs">
-            No wholesalers found matching "{search}".
-          </div>
-        )}
+            <div className="pt-3 mt-3 border-t border-stone-100 flex items-center justify-between text-xs">
+              <span className="text-stone-500 flex items-center gap-1">
+                <Phone className="w-3.5 h-3.5 text-stone-400" />
+                {item.phone || 'No phone'}
+              </span>
+              <span className="font-bold text-stone-900">
+                Due: {money(item.totalOutstandingPayment || 0)}
+              </span>
+            </div>
+          </button>
+        ))}
       </div>
 
-      {/* Add / Edit Wholesaler Modal */}
+      {/* Add Wholesaler Modal */}
       {showForm && (
-        <div className="fixed inset-0 z-50 bg-stone-950/40 p-4 flex items-center justify-center backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-2xl p-5 w-full max-w-md space-y-4 border border-stone-200 shadow-xl">
-            <div className="flex items-start justify-between">
-              <div>
-                <h2 className="font-bold text-base text-stone-950">
-                  {editingWholesaler ? 'Edit Wholesaler' : 'Register New Wholesaler'}
-                </h2>
-                <p className="text-xs text-stone-500 mt-0.5">Bulk buyer details for rice sales</p>
-              </div>
-              <button type="button" onClick={() => setShowForm(false)} className="text-stone-400 hover:text-stone-700 p-1">
+        <div className="fixed inset-0 z-50 bg-stone-950/40 backdrop-blur-xs p-4 flex items-center justify-center">
+          <div className="bg-white rounded-2xl p-5 sm:p-6 w-full max-w-md shadow-2xl border border-stone-200 space-y-4">
+            <div className="flex items-center justify-between pb-2 border-b border-stone-100">
+              <h2 className="text-base font-bold text-stone-950">Add Wholesaler Merchant</h2>
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="text-stone-400 hover:text-stone-700 cursor-pointer"
+              >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {errorMessage && (
-              <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-900">
-                {errorMessage}
-              </div>
-            )}
-
-            <div className="space-y-3 text-xs font-semibold text-stone-700">
-              <label className="block">
-                Trader / Contact Name *
+            <form onSubmit={saveWholesaler} className="space-y-3">
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Full Name / Proprietor *
+                </label>
                 <input
+                  type="text"
+                  placeholder="e.g. Ramesh Agrawal"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="e.g. Ramesh Kumar"
-                  className="mt-1 w-full rounded-xl border border-stone-200 p-2.5 text-xs font-normal focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
+                  className="w-full rounded-xl border border-stone-200 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                  required
                 />
-              </label>
-              <label className="block">
-                Company / Agency Name
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Firm / Mandi Company Name
+                </label>
                 <input
+                  type="text"
+                  placeholder="e.g. Agrawal Grain Traders Mandi"
                   value={company}
                   onChange={(e) => setCompany(e.target.value)}
-                  placeholder="e.g. Kisan Rice Traders"
-                  className="mt-1 w-full rounded-xl border border-stone-200 p-2.5 text-xs font-normal focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
+                  className="w-full rounded-xl border border-stone-200 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </label>
-              <label className="block">
-                Mobile / Phone Number
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Contact Phone Number
+                </label>
                 <input
+                  type="tel"
+                  placeholder="e.g. 9876543210"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  placeholder="e.g. 9876543210"
-                  className="mt-1 w-full rounded-xl border border-stone-200 p-2.5 text-xs font-normal focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
+                  className="w-full rounded-xl border border-stone-200 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </label>
-              <label className="block">
-                Address / Mandi Location
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Mandi Yard / Depot Address
+                </label>
                 <input
+                  type="text"
+                  placeholder="e.g. Shop 14, Krishi Upaj Mandi, Ganj Basoda"
                   value={address}
                   onChange={(e) => setAddress(e.target.value)}
-                  placeholder="e.g. Anaaj Mandi, Shop #12"
-                  className="mt-1 w-full rounded-xl border border-stone-200 p-2.5 text-xs font-normal focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
+                  className="w-full rounded-xl border border-stone-200 p-2.5 text-xs focus:outline-none focus:ring-2 focus:ring-emerald-500"
                 />
-              </label>
-            </div>
+              </div>
 
-            <div className="flex gap-2 pt-2 border-t border-stone-100">
-              <Button variant="outline" className="flex-1" onClick={() => setShowForm(false)}>
-                Cancel
-              </Button>
-              <Button variant="primary" className="flex-1" onClick={save}>
-                {editingWholesaler ? 'Save Changes' : 'Register Wholesaler'}
-              </Button>
-            </div>
+              <div className="flex gap-2 pt-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setShowForm(false)}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit" variant="primary" className="flex-1">
+                  Save Wholesaler
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}

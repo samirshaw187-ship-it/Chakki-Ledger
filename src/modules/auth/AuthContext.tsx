@@ -14,7 +14,9 @@ export interface AuthContextType {
   session: AuthSession | null;
   role: UserRole;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<LoginResult>;
+  login: (phone: string, pin: string) => Promise<LoginResult>;
+  loginWithEmailPassword: (email: string, password: string, role?: UserRole) => Promise<LoginResult>;
+  loginWithGoogle: (email: string, role?: UserRole, name?: string) => Promise<LoginResult>;
   loginAsRole: (role: UserRole) => void;
   logout: () => void;
   can: (permission: Permission) => boolean;
@@ -27,9 +29,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [session, setSession] = useState<AuthSession | null>(() => AuthService.getSession());
 
   useEffect(() => {
-    // Initialize Firebase Auth listener and cloud Firestore sync
-    AuthService.initAuthListener();
-
     // Subscribe to AuthService changes (persisted logins, logouts, switches)
     const unsubscribe = AuthService.subscribe((updatedSession) => {
       setSession(updatedSession);
@@ -37,8 +36,32 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return unsubscribe;
   }, []);
 
-  const login = async (email: string, password: string): Promise<LoginResult> => {
-    const result = await AuthService.login(email, password);
+  const login = async (phone: string, pin: string): Promise<LoginResult> => {
+    const result = AuthService.login(phone, pin);
+    if (result.success && result.session) {
+      setSession(result.session);
+    }
+    return result;
+  };
+
+  const loginWithEmailPassword = async (
+    email: string,
+    password: string,
+    role?: UserRole
+  ): Promise<LoginResult> => {
+    const result = await AuthService.loginWithEmailPassword(email, password, role);
+    if (result.success && result.session) {
+      setSession(result.session);
+    }
+    return result;
+  };
+
+  const loginWithGoogle = async (
+    email: string,
+    role?: UserRole,
+    name?: string
+  ): Promise<LoginResult> => {
+    const result = AuthService.loginWithGoogle(email, role, name);
     if (result.success && result.session) {
       setSession(result.session);
     }
@@ -79,6 +102,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role,
     isAuthenticated,
     login,
+    loginWithEmailPassword,
+    loginWithGoogle,
     loginAsRole,
     logout,
     can,

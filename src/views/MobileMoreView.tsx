@@ -59,25 +59,7 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
     },
   ].filter((item) => canAccessRoute(item.path!, activeRole));
 
-  // 2. Business Group (Only accessible by Administrator; completely removed for Shop Owner)
-  const businessItems: MenuItem[] = activeRole === UserRole.OWNER
-    ? []
-    : [
-        {
-          path: '/app/reports',
-          label: 'Reports',
-          sublabel: 'Daily statements, khata dues & sales reports',
-          icon: FileSpreadsheet,
-        },
-        {
-          path: '/app/daily-closing',
-          label: 'Daily Closing',
-          sublabel: 'End-of-day register tally & cash verification',
-          icon: Lock,
-        },
-      ].filter((item) => canAccessRoute(item.path!, activeRole));
-
-  // 3. System Group (Audit Logs is exclusively for Administrator)
+  // 2. System Group (Audit Logs removed for Shop Owner; accessible only to Admin)
   const systemItems: MenuItem[] = [
     {
       path: '/app/settings',
@@ -91,19 +73,9 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
       sublabel: 'Export ledger data & database snapshot',
       icon: HardDriveDownload,
     },
-    ...(activeRole === UserRole.ADMIN
-      ? [
-          {
-            path: '/app/audit-logs',
-            label: 'Audit Logs',
-            sublabel: 'System activities & security event trail',
-            icon: ShieldCheck,
-          },
-        ]
-      : []),
   ].filter((item) => canAccessRoute(item.path!, activeRole));
 
-  // 4. Account Group
+  // 3. Account Group
   const accountItems: MenuItem[] = [
     {
       label: 'My Profile',
@@ -144,42 +116,11 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
             {activeRole}
           </span>
         </div>
-
-        {/* Quick Role Switcher for Administrator Inspection */}
-        {activeRole === UserRole.ADMIN && (
-          <div className="pt-2 border-t border-stone-100 space-y-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
-                Admin View Toggle
-              </span>
-            </div>
-            <div className="grid grid-cols-2 gap-1.5 pt-1">
-              {([UserRole.OWNER, UserRole.ADMIN]).map((role) => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => onRoleChange(role)}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-all cursor-pointer text-center ${
-                    activeRole === role
-                      ? 'bg-emerald-800 text-white border-emerald-800 shadow-2xs'
-                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
-                  }`}
-                >
-                  {role === UserRole.OWNER ? 'Shop Owner View' : 'Admin Console'}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Menu Groups: Operational, Business, System, Account */}
+      {/* Menu Groups: Operational, System, Account */}
       {operationalItems.length > 0 && (
         <MenuList title="Operational" items={operationalItems} onNavigate={onNavigate} />
-      )}
-
-      {businessItems.length > 0 && (
-        <MenuList title="Business" items={businessItems} onNavigate={onNavigate} />
       )}
 
       {systemItems.length > 0 && (
@@ -222,20 +163,9 @@ export const MobileMoreView: React.FC<MobileMoreViewProps> = ({
           <p className="text-xs text-stone-600 bg-stone-50 p-2.5 rounded-lg border border-stone-100">
             {roleMeta?.description}
           </p>
-          <div className="flex justify-between items-center pt-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                setIsProfileOpen(false);
-                onNavigate('/app/settings');
-              }}
-              className="text-xs cursor-pointer"
-            >
-              Change Password
-            </Button>
-            <Button variant="primary" size="sm" onClick={() => setIsProfileOpen(false)}>
-              Done
+          <div className="flex justify-end pt-2">
+            <Button variant="outline" size="sm" onClick={() => setIsProfileOpen(false)}>
+              Close
             </Button>
           </div>
         </div>

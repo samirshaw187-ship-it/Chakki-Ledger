@@ -1,7 +1,7 @@
 /**
- * Chakki Ledger - Initial Seed Configuration
- * Fresh database initialization with clean master records.
- * All prototype/demo customer and transaction records have been scrubbed.
+ * Chakki Ledger - Initial Seed Data (Clean State)
+ * All demo accounts, sample customers, mock transactions, and test data
+ * have been completely removed for a pristine, production-ready starting state.
  */
 
 import {
@@ -16,52 +16,35 @@ import {
 
 export const SEED_USERS: User[] = [
   {
-    id: 'user-admin-01',
+    id: 'admin_samir_shaw',
+    name: 'Samir Shaw',
+    phone: '9876543210',
     email: 'samirpc187@gmail.com',
-    phone: '9830099887',
-    name: 'Samir Shaw (Administrator)',
     role: UserRole.ADMIN,
     isActive: true,
-    isApproved: true,
     approvalStatus: 'APPROVED',
     password: 'samirCL@2025',
-    pin: '9988',
-    createdAt: '2026-01-05T08:00:00.000Z',
-    lastLoginAt: new Date().toISOString(),
+    createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
-    id: 'user-owner-samir',
-    email: 'samirshaw869@gmail.com',
-    phone: '9830012345',
-    name: 'Samir Shaw (Shop Owner)',
-    role: UserRole.OWNER,
-    isActive: true,
-    isApproved: true,
-    approvalStatus: 'APPROVED',
-    password: 'samirCL@2025',
-    pin: '1234',
-    createdAt: '2026-01-05T08:00:00.000Z',
-    lastLoginAt: new Date().toISOString(),
-  },
-  {
-    id: 'user-owner-01',
-    email: 'shopowner@gmail.com',
+    id: 'admin_master_1',
+    name: 'Platform Administrator',
     phone: '9876543210',
-    name: 'Ramesh Sharma (Shop Owner)',
-    role: UserRole.OWNER,
+    email: 'admin@gmail.com',
+    role: UserRole.ADMIN,
     isActive: true,
-    isApproved: true,
     approvalStatus: 'APPROVED',
-    password: 'Owner@2025',
-    pin: '1234',
-    createdAt: '2026-01-05T08:00:00.000Z',
-    lastLoginAt: new Date().toISOString(),
+    password: 'Admin@1234',
+    createdAt: '2026-01-01T00:00:00.000Z',
   },
 ];
 
-// Clean empty collections for a fresh production ledger
 export const SEED_CUSTOMERS: Customer[] = [];
+
 export const SEED_WHOLESALERS: Wholesaler[] = [];
+
 export const SEED_SAMPLE_TRANSACTIONS: Transaction[] = [];
+
 export const SEED_SAMPLE_PAYMENTS: Payment[] = [];
+
 export const SEED_SAMPLE_LEDGER_ENTRIES: LedgerEntry[] = [];

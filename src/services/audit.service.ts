@@ -8,7 +8,6 @@
  */
 
 import { AuditAction, AuditLogEntry, Transaction, TransactionStatus } from '../types';
-import { syncAuditLogToFirestore } from './firestore-dispatcher';
 
 export interface AuditQueryOptions {
   search?: string;
@@ -20,22 +19,14 @@ export interface AuditQueryOptions {
   endDate?: string;
 }
 
-const INITIAL_SEED_AUDIT_LOGS: AuditLogEntry[] = [
-  {
-    id: 'audit-system-init',
-    action: AuditAction.SYSTEM_PREFERENCES_UPDATED,
-    entityType: 'SYSTEM',
-    entityId: 'sys-init',
-    entityReference: 'SYS-BOOT',
-    performedById: 'system',
-    performedByName: 'Chakki Ledger System',
-    reason: 'Chakki Ledger database active with real-time audit logging and persistence.',
-    timestamp: new Date().toISOString(),
-  },
-];
+const INITIAL_SEED_AUDIT_LOGS: AuditLogEntry[] = [];
 
 export class AuditService {
-  private static memoryAuditLogs: AuditLogEntry[] = [...INITIAL_SEED_AUDIT_LOGS];
+  private static memoryAuditLogs: AuditLogEntry[] = [];
+
+  public static setLogsFromRemote(logs: AuditLogEntry[]): void {
+    this.memoryAuditLogs = [...logs];
+  }
 
   /**
    * Records an auditable event
@@ -48,7 +39,12 @@ export class AuditService {
     };
 
     this.memoryAuditLogs.unshift(fullEntry);
-    syncAuditLogToFirestore(fullEntry);
+    
+    // Async firestore sync without blocking
+    import('../lib/firebase-sync.service').then(({ FirebaseSyncService }) => {
+      FirebaseSyncService.saveAuditLog(fullEntry);
+    }).catch(() => {});
+
     return fullEntry;
   }
 
@@ -68,10 +64,6 @@ export class AuditService {
     return [...this.memoryAuditLogs].sort(
       (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
     );
-  }
-
-  public static getLogs(): AuditLogEntry[] {
-    return this.getAllLogs();
   }
 
   /**

@@ -33,7 +33,7 @@ export interface ModuleManifest {
 
 export const SYSTEM_MODULES: ModuleManifest[] = [
   { id: 'auth', name: 'Authentication', category: 'SYSTEM', description: 'Session tokens, fast mobile PIN login, RBAC', isImplemented: true, status: 'FOUNDATION_READY' },
-  { id: 'users', name: 'Users & Roles', category: 'SYSTEM', description: 'OWNER, STAFF, ACCOUNTANT permissions', isImplemented: true, status: 'FOUNDATION_READY' },
+  { id: 'users', name: 'Users & Roles', category: 'SYSTEM', description: 'Shop Owner and Administrator permissions', isImplemented: true, status: 'FOUNDATION_READY' },
   { id: 'customers', name: 'Customer Directory', category: 'OPERATIONS', description: 'Farmer/customer profiles, running dues & wheat balance', isImplemented: true, status: 'FOUNDATION_READY' },
   { id: 'transactions', name: 'Transactions Engine', category: 'OPERATIONS', description: 'Central source of truth for all business exchanges', isImplemented: true, status: 'FOUNDATION_READY' },
   { id: 'ledger', name: 'Customer & Grain Ledger', category: 'FINANCE', description: 'Replaces handwritten diaries with auditable passbooks', isImplemented: true, status: 'FOUNDATION_READY' },

@@ -1,74 +1,31 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getAnalytics, isSupported } from 'firebase/analytics';
-import firebaseConfigJson from '../../firebase-applet-config.json';
+/**
+ * Chakki Ledger - Firebase SDK Client Configuration
+ * Single Source of Truth for Firebase App, Auth, and Firestore
+ */
 
-// Web app Firebase configuration
-// Supports Vercel deployment via VITE_FIREBASE_* environment variables,
-// with automatic fallback to firebase-applet-config.json
+import { initializeApp, getApps, getApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import firebaseAppletConfig from '../../firebase-applet-config.json';
+
+// Project configuration provided by Firebase setup
 export const firebaseConfig = {
-  apiKey:
-    import.meta.env.VITE_FIREBASE_API_KEY ||
-    firebaseConfigJson?.apiKey ||
-    '',
-  authDomain:
-    import.meta.env.VITE_FIREBASE_AUTH_DOMAIN ||
-    firebaseConfigJson?.authDomain ||
-    '',
-  projectId:
-    import.meta.env.VITE_FIREBASE_PROJECT_ID ||
-    firebaseConfigJson?.projectId ||
-    '',
-  storageBucket:
-    import.meta.env.VITE_FIREBASE_STORAGE_BUCKET ||
-    firebaseConfigJson?.storageBucket ||
-    '',
-  messagingSenderId:
-    import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID ||
-    firebaseConfigJson?.messagingSenderId ||
-    '',
-  appId:
-    import.meta.env.VITE_FIREBASE_APP_ID ||
-    firebaseConfigJson?.appId ||
-    '',
-  measurementId:
-    import.meta.env.VITE_FIREBASE_MEASUREMENT_ID ||
-    firebaseConfigJson?.measurementId ||
-    '',
+  apiKey: firebaseAppletConfig.apiKey || 'AIzaSyA1QVaZ93nwd2rAeqymw4BtjV2FyubGThY',
+  authDomain: firebaseAppletConfig.authDomain || 'chakki-bussiness.firebaseapp.com',
+  projectId: firebaseAppletConfig.projectId || 'chakki-bussiness',
+  storageBucket: firebaseAppletConfig.storageBucket || 'chakki-bussiness.firebasestorage.app',
+  messagingSenderId: firebaseAppletConfig.messagingSenderId || '645041401245',
+  appId: firebaseAppletConfig.appId || '1:645041401245:web:8b4474de8ce97707d51374',
 };
 
-// Initialize Firebase safely without duplicate app errors
-export const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+// Initialize Firebase once
+export const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-// Firebase Auth service instance
-export const auth = getAuth(app);
-export const googleProvider = new GoogleAuthProvider();
-googleProvider.setCustomParameters({ prompt: 'select_account' });
+// Export Firebase Auth instance
+export const auth = getAuth(firebaseApp);
 
-// Cloud Firestore database service instance
-// Configured with custom databaseId if specified, else default
-const firestoreDbId =
-  import.meta.env.VITE_FIREBASE_FIRESTORE_DATABASE_ID ||
-  firebaseConfigJson?.firestoreDatabaseId;
-
-export const db =
-  firestoreDbId && firestoreDbId !== '(default)'
-    ? getFirestore(app, firestoreDbId)
-    : getFirestore(app);
-
-// Initialize Firebase Analytics if supported in the browser environment
-export let analytics: ReturnType<typeof getAnalytics> | null = null;
-if (typeof window !== 'undefined') {
-  isSupported()
-    .then((supported) => {
-      if (supported) {
-        try {
-          analytics = getAnalytics(app);
-        } catch (err) {
-          console.warn('Analytics initialization skipped:', err);
-        }
-      }
-    })
-    .catch(() => {});
-}
+// Export Firestore instance
+// Use named database if specified, or default instance
+export const db = firebaseAppletConfig.firestoreDatabaseId && firebaseAppletConfig.firestoreDatabaseId !== '(default)'
+  ? getFirestore(firebaseApp, firebaseAppletConfig.firestoreDatabaseId)
+  : getFirestore(firebaseApp);

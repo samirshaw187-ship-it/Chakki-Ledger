@@ -146,7 +146,7 @@ export const CustomerProfileView: React.FC<CustomerProfileViewProps> = ({
         {
           id: user.id,
           name: user.name,
-          role: role || UserRole.ADMIN,
+          role: role || UserRole.OWNER,
         }
       );
 

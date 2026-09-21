@@ -221,10 +221,6 @@ export enum AuditAction {
   CUSTOMER_CREATED = 'CUSTOMER_CREATED',
   CUSTOMER_UPDATED = 'CUSTOMER_UPDATED',
   CUSTOMER_STATUS_CHANGED = 'CUSTOMER_STATUS_CHANGED',
-  ACCOUNT_APPROVED = 'ACCOUNT_APPROVED',
-  ACCOUNT_REJECTED = 'ACCOUNT_REJECTED',
-  PASSWORD_CHANGED = 'PASSWORD_CHANGED',
-  USER_REGISTERED = 'USER_REGISTERED',
   OPENING_STOCK_CREATED = 'OPENING_STOCK_CREATED',
   INVENTORY_ADJUSTED = 'INVENTORY_ADJUSTED',
   INVENTORY_SETTING_CHANGED = 'INVENTORY_SETTING_CHANGED',
@@ -272,17 +268,19 @@ export enum SettlementPaymentStatus {
 
 export type SettlementDirection = 'CUSTOMER_PAYS' | 'CUSTOMER_RECEIVES' | 'SHOP_PAYS' | 'SETTLED';
 
+export type UserApprovalStatus = 'PENDING_APPROVAL' | 'APPROVED' | 'SUSPENDED' | 'DEACTIVATED' | 'BLOCKED';
+
 export interface User {
   id: string;
-  email: string;
-  phone?: string;
+  phone: string;
   name: string;
   role: UserRole;
   isActive: boolean;
-  isApproved?: boolean;
-  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED';
-  authProvider?: 'password' | 'google';
+  email?: string;
+  address?: string;
   password?: string;
+  approvalStatus?: UserApprovalStatus;
+  rejectionReason?: string;
   pin?: string;
   createdAt: string;
   lastLoginAt?: string;

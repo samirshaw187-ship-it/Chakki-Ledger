@@ -43,9 +43,9 @@ const ownerActor = {
 };
 
 const unauthorizedActor = {
-  id: 'usr-unauth-test',
-  name: 'Unauthorized Operator',
-  role: 'OPERATOR' as any,
+  id: 'usr-unauthorized-test',
+  name: 'Unauthorized User',
+  role: 'UNAUTHORIZED' as any,
 };
 
 async function runAllTests() {
@@ -276,22 +276,22 @@ async function runAllTests() {
       ownerActor
     );
 
-    let staffBlocked = false;
+    let actorBlocked = false;
     try {
       await TransactionService.createCorrection(
         res4.transaction.id,
         {
-          reason: 'Staff trying to modify balance',
+          reason: 'Unauthorized user trying to modify balance',
           items: [{ itemId: res4.transaction.items[0].id, newQuantity: 15, newRate: 0 }],
         },
         unauthorizedActor
       );
     } catch (e: any) {
-      staffBlocked = true;
+      actorBlocked = true;
       assert.ok(e.message.toLowerCase().includes('unauthorized') || e.message.toLowerCase().includes('permission'), 'Error must mention unauthorized or permission');
     }
 
-    assert.ok(staffBlocked, 'Unauthorized operator must be blocked from correcting transactions server-side');
+    assert.ok(actorBlocked, 'Unauthorized actor must be blocked from correcting transactions server-side');
     console.log('✔ Test 4: Unauthorized correction attempt rejected server-side');
     passed++;
   } catch (err: any) {

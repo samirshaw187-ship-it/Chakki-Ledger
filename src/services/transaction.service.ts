@@ -399,7 +399,7 @@ export class TransactionService {
     if (!hasPermission(role, Permission.CORRECT_TRANSACTION)) {
       return {
         isValid: false,
-        error: 'Unauthorized: Staff members or users without TRANSACTION_CORRECT permission are not permitted to perform financial corrections. Only the Shop Owner or Accountant can perform corrections.',
+        error: 'Unauthorized: Users without TRANSACTION_CORRECT permission are not permitted to perform financial corrections. Only the Shop Owner or Admin can perform corrections.',
       };
     }
 
@@ -806,7 +806,7 @@ export class TransactionService {
     if (!hasPermission(role, Permission.REVERSE_TRANSACTION)) {
       return {
         isValid: false,
-        error: 'Unauthorized: Staff members or users without TRANSACTION_REVERSE permission are not permitted to reverse financial transactions. Only the Shop Owner or Accountant can perform reversals.',
+        error: 'Unauthorized: Users without TRANSACTION_REVERSE permission are not permitted to reverse financial transactions. Only the Shop Owner or Admin can perform reversals.',
       };
     }
 

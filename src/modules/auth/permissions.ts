@@ -2,9 +2,8 @@
  * Chakki Ledger - Role-Based Access Control (RBAC) & Permissions Definition
  *
  * System Roles:
- * - OWNER: Complete shop ownership & oversight (counter, back-office, rates, audit logs, user management, backup)
- * - STAFF: Fast counter operator (milling, customer registration, wheat/rice counter entry, cash collection)
- * - ACCOUNTANT: Financial ledger, khata reconciliation, audit logs, reports, daily closing, wholesale
+ * - OWNER: Complete shop ownership & oversight (counter, transactions, khata, rates, inventory, wholesale)
+ * - ADMIN: Platform administration (approvals, suspensions, user lifecycle management, audit logs)
  */
 
 import { UserRole } from '../../types';
@@ -72,6 +71,7 @@ export enum Permission {
  * Explicit Role-to-Permissions Mapping
  */
 export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
+  [UserRole.ADMIN]: Object.values(Permission),
   [UserRole.OWNER]: [
     Permission.VIEW_COUNTER,
     Permission.CREATE_TRANSACTION,
@@ -92,7 +92,6 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.MANAGE_WHOLESALERS,
     Permission.VIEW_INVENTORY,
     Permission.ADJUST_INVENTORY,
-    Permission.VIEW_FINANCIAL_REPORTS,
     Permission.VIEW_AI_INSIGHTS,
     Permission.SETTINGS_VIEW,
     Permission.SETTINGS_MANAGE,
@@ -109,64 +108,11 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
     Permission.EXPORT_INVENTORY,
     Permission.EXPORT_RICE_TRADING,
     Permission.EXPORT_WHOLESALERS,
-    Permission.EXPORT_FINANCIAL_REPORTS,
     Permission.RESTORE_DATA,
     Permission.VIEW_LEDGER,
-    Permission.MANAGE_DAILY_CLOSING,
     Permission.VIEW_EXPENSES,
     Permission.MANAGE_EXPENSES,
-    Permission.VIEW_ANALYTICS,
     Permission.MANAGE_RATES,
-    Permission.EXPORT_BACKUP,
-    Permission.SYSTEM_SETTINGS,
-  ],
-  [UserRole.ADMIN]: [
-    Permission.VIEW_COUNTER,
-    Permission.CREATE_TRANSACTION,
-    Permission.VIEW_TRANSACTIONS,
-    Permission.CORRECT_TRANSACTION,
-    Permission.REVERSE_TRANSACTION,
-    Permission.VIEW_CUSTOMERS,
-    Permission.CREATE_CUSTOMER,
-    Permission.EDIT_CUSTOMER,
-    Permission.RECORD_PAYMENT,
-    Permission.VIEW_RECEIPTS,
-    Permission.VIEW_MILLING,
-    Permission.MANAGE_RICE_TRADING,
-    Permission.VIEW_RICE_TRADING,
-    Permission.CREATE_WHOLESALE_SALE,
-    Permission.CREATE_WHOLESALER,
-    Permission.VIEW_WHOLESALERS,
-    Permission.MANAGE_WHOLESALERS,
-    Permission.VIEW_INVENTORY,
-    Permission.ADJUST_INVENTORY,
-    Permission.VIEW_FINANCIAL_REPORTS,
-    Permission.VIEW_AI_INSIGHTS,
-    Permission.SETTINGS_VIEW,
-    Permission.SETTINGS_MANAGE,
-    Permission.RATE_MANAGE,
-    Permission.COSTING_MANAGE,
-    Permission.INVENTORY_CONFIG_MANAGE,
-    Permission.RECEIPT_CONFIG_MANAGE,
-    Permission.BACKUP_VIEW,
-    Permission.BACKUP_CREATE,
-    Permission.EXPORT_CUSTOMERS,
-    Permission.EXPORT_TRANSACTIONS,
-    Permission.EXPORT_LEDGER,
-    Permission.EXPORT_PAYMENTS,
-    Permission.EXPORT_INVENTORY,
-    Permission.EXPORT_RICE_TRADING,
-    Permission.EXPORT_WHOLESALERS,
-    Permission.EXPORT_FINANCIAL_REPORTS,
-    Permission.RESTORE_DATA,
-    Permission.VIEW_LEDGER,
-    Permission.MANAGE_DAILY_CLOSING,
-    Permission.VIEW_EXPENSES,
-    Permission.MANAGE_EXPENSES,
-    Permission.VIEW_ANALYTICS,
-    Permission.MANAGE_RATES,
-    Permission.MANAGE_USERS,
-    Permission.VIEW_AUDIT_LOGS,
     Permission.EXPORT_BACKUP,
     Permission.SYSTEM_SETTINGS,
   ],
@@ -176,7 +122,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Permission[]> = {
  * Check if a role possesses a specific permission
  */
 export function hasPermission(role: UserRole, permission: Permission): boolean {
-  const permissions = ROLE_PERMISSIONS[role] as readonly Permission[] | undefined;
+  const permissions = ROLE_PERMISSIONS[role];
   if (!permissions) return false;
   return permissions.includes(permission);
 }
@@ -226,14 +172,25 @@ export const ROUTE_PERMISSION_MAP: Record<string, Permission> = {
  * Check if a role has access to a given route path
  */
 export function canAccessRoute(path: string, role: UserRole): boolean {
-  // Shop Owner is strictly forbidden from accessing any /admin/* route and audit logs
-  if (role === UserRole.OWNER) {
-    if (path.startsWith('/admin') || path === '/app/audit-logs') {
-      return false;
-    }
+  // Public routes
+  if (path === '/login' || path === '/create-account') {
+    return true;
   }
 
-  // Admin has full system access
+  // Shop Owner is strictly restricted to mobile app views only
+  if (role === UserRole.OWNER) {
+    // Cannot access any admin routes
+    if (path.startsWith('/admin')) {
+      return false;
+    }
+    // Cannot access audit logs, financial reports, or daily closing in mobile app
+    if (path === '/app/audit-logs' || path === '/app/reports' || path === '/app/daily-closing') {
+      return false;
+    }
+    return true;
+  }
+
+  // Admin has access to complete admin dashboard and oversight views
   if (role === UserRole.ADMIN) {
     return true;
   }
@@ -251,7 +208,7 @@ export function canAccessRoute(path: string, role: UserRole): boolean {
   }
 
   // Public/shared routes
-  if (path === '/login' || path === '/app/more') {
+  if (path === '/app/more') {
     return true;
   }
 
@@ -268,32 +225,23 @@ export interface RoleMetadata {
   badgeClass: string;
   defaultPath: string;
   description: string;
-  defaultEmail: string;
-  demoPassword: string;
-  demoPin: string;
 }
 
 export const ROLE_METADATA: Record<UserRole, RoleMetadata> = {
-  [UserRole.OWNER]: {
-    role: UserRole.OWNER,
-    title: 'Shop Owner',
-    subtitle: 'Full Business, Counter & Financial Oversight',
-    badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
-    defaultPath: '/app/home',
-    description: 'Complete unrestricted authority across shop counter, wholesale grain trading, rates configuration, personnel accounts, and audit log.',
-    defaultEmail: 'owner@gmail.com',
-    demoPassword: 'Owner@1234',
-    demoPin: '1234',
-  },
   [UserRole.ADMIN]: {
     role: UserRole.ADMIN,
     title: 'Administrator',
-    subtitle: 'System Administration, Operations & Accounting',
-    badgeClass: 'bg-sky-100 text-sky-900 border-sky-300',
-    defaultPath: '/admin/dashboard',
-    description: 'Full administrative access to financial ledger, audit logs, customer khata balances, inventory adjustments, and system settings.',
-    defaultEmail: 'samirpc187@gmail.com',
-    demoPassword: 'samirCL@2025',
-    demoPin: '9988',
+    subtitle: 'Platform & Shop Approval Management',
+    badgeClass: 'bg-purple-100 text-purple-900 border-purple-300',
+    defaultPath: '/admin/users',
+    description: 'Review and approve new shop owner applications, suspend or deactivate shop accounts, and oversee platform access.',
+  },
+  [UserRole.OWNER]: {
+    role: UserRole.OWNER,
+    title: 'Shop Owner',
+    subtitle: 'Full Administrative & Financial Authority',
+    badgeClass: 'bg-emerald-100 text-emerald-900 border-emerald-300',
+    defaultPath: '/app/home',
+    description: 'Complete unrestricted access across mobile counter, wholesale grain trading, rates configuration, user roles, and audit trail.',
   },
 };

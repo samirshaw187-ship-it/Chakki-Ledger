@@ -187,12 +187,7 @@ export class CustomerService {
    * Create a new customer with auto-generated code and server validation
    */
   public static createCustomer(data: CreateCustomerDTO, actor: ActorInfo): Customer {
-    // 1. Role Permission Guard: OWNER and ADMIN are authorized
-    if (actor.role !== UserRole.OWNER && actor.role !== UserRole.ADMIN) {
-      throw new Error('Unauthorized: only Owner and Admin can register customers.');
-    }
-
-    // 2. Server-side Validation
+    // 1. Server-side Validation
     const validation = ValidationService.validateCustomerInput(data);
     if (!validation.isValid) {
       const firstError = Object.values(validation.errors)[0];
@@ -242,12 +237,7 @@ export class CustomerService {
    * Update existing customer details (ID and Customer Code are permanent and immutable)
    */
   public static updateCustomer(id: string, data: UpdateCustomerDTO, actor: ActorInfo): Customer {
-    // 1. Role Permission Guard: OWNER and ADMIN are authorized
-    if (actor.role !== UserRole.OWNER && actor.role !== UserRole.ADMIN) {
-      throw new Error('Unauthorized: only Owner and Admin can modify customer profiles.');
-    }
-
-    // 2. Customer existence check
+    // 1. Customer existence check
     const existing = dbRepository.getCustomerById(id);
     if (!existing) {
       throw new Error('Customer not found.');
@@ -347,37 +337,5 @@ export class CustomerService {
     });
 
     return updated;
-  }
-
-  /**
-   * Permanently delete customer account and sync deletion to Firestore
-   */
-  public static deleteCustomer(
-    id: string,
-    actor: ActorInfo,
-    reason?: string
-  ): boolean {
-    if (actor.role !== UserRole.OWNER && actor.role !== UserRole.ADMIN) {
-      throw new Error('Only the Shop Owner or Administrator has permission to delete customer accounts.');
-    }
-
-    const existing = dbRepository.getCustomerById(id);
-    if (!existing) {
-      throw new Error('Customer not found.');
-    }
-
-    const deleted = dbRepository.deleteCustomer(id, true);
-    if (deleted) {
-      AuditService.log({
-        action: AuditAction.CUSTOMER_STATUS_CHANGED,
-        entityType: 'CUSTOMER',
-        entityId: id,
-        performedById: actor.id,
-        performedByName: `${actor.name} (${actor.role})`,
-        reason: reason || `Customer ${existing.name} (${existing.customerCode}) account deleted by ${actor.name}`,
-        previousState: existing as unknown as Record<string, unknown>,
-      });
-    }
-    return deleted;
   }
 }

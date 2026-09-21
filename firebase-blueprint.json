@@ -1,29 +1,29 @@
 {
   "entities": {
-    "User": {
-      "title": "User",
-      "description": "Personnel and operators of Chakki Ledger",
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profiles including Shop Owner and Admin accounts with roles and approval states.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "email": { "type": "string", "format": "email" },
-        "phone": { "type": "string" },
         "name": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "address": { "type": "string" },
         "role": { "type": "string", "enum": ["OWNER", "ADMIN"] },
         "isActive": { "type": "boolean" },
-        "isApproved": { "type": "boolean" },
-        "approvalStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
-        "authProvider": { "type": "string", "enum": ["password", "google"] },
-        "password": { "type": "string" },
-        "pin": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "lastLoginAt": { "type": "string", "format": "date-time" }
+        "approvalStatus": { "type": "string", "enum": ["PENDING_APPROVAL", "APPROVED", "SUSPENDED", "DEACTIVATED", "BLOCKED"] },
+        "rejectionReason": { "type": "string" },
+        "resetRequested": { "type": "boolean" },
+        "resetInitiatedAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "lastLoginAt": { "type": "string" }
       },
-      "required": ["id", "email", "name", "role", "isActive"]
+      "required": ["id", "name", "email", "phone", "role", "isActive", "createdAt"]
     },
     "Customer": {
       "title": "Customer",
-      "description": "Chakki khata customer records",
+      "description": "Customer khata profile with balance states for wheat and cash dues.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -32,20 +32,20 @@
         "phone": { "type": "string" },
         "alternatePhone": { "type": "string" },
         "address": { "type": "string" },
-        "notes": { "type": "string" },
         "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
         "isActive": { "type": "boolean" },
         "currentDueAmount": { "type": "number" },
         "wheatBalanceKg": { "type": "number" },
         "riceCreditAmount": { "type": "number" },
-        "createdAt": { "type": "string", "format": "date-time" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "lastTransactionAt": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["id", "customerCode", "name", "status", "isActive"]
+      "required": ["id", "customerCode", "name", "status", "isActive", "currentDueAmount", "wheatBalanceKg", "createdAt"]
     },
     "Transaction": {
       "title": "Transaction",
-      "description": "Counter milling, exchange, and grain transactions",
+      "description": "Master transaction record for milling, atta exchange, rice trading, settlements, and sales.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -60,68 +60,102 @@
         "netAmount": { "type": "number" },
         "paidAmount": { "type": "number" },
         "balanceDelta": { "type": "number" },
+        "paymentStatus": { "type": "string" },
+        "items": { "type": "array" },
         "createdById": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdByName": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       },
-      "required": ["id", "transactionNumber", "type", "status", "date", "createdById", "createdAt"]
+      "required": ["id", "transactionNumber", "type", "status", "date", "grossAmount", "netAmount", "paidAmount", "balanceDelta", "createdAt"]
     },
     "Payment": {
       "title": "Payment",
-      "description": "Cash receipts and payments",
+      "description": "Payment receipts collected or paid out.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "receiptNumber": { "type": "string" },
-        "customerId": { "type": "string" },
-        "amount": { "type": "number" },
-        "paymentType": { "type": "string" },
         "date": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "customerId": { "type": "string" },
+        "customerName": { "type": "string" },
+        "amount": { "type": "number" },
+        "mode": { "type": "string" },
+        "status": { "type": "string" },
+        "createdById": { "type": "string" },
+        "createdAt": { "type": "string" }
       },
-      "required": ["id", "receiptNumber", "customerId", "amount", "date", "createdAt"]
-    },
-    "Wholesaler": {
-      "title": "Wholesaler",
-      "description": "Paddy and grain suppliers",
-      "type": "object",
-      "properties": {
-        "id": { "type": "string" },
-        "code": { "type": "string" },
-        "name": { "type": "string" },
-        "status": { "type": "string" }
-      },
-      "required": ["id", "name", "status"]
+      "required": ["id", "receiptNumber", "date", "customerId", "amount", "mode", "createdAt"]
     },
     "LedgerEntry": {
       "title": "LedgerEntry",
-      "description": "Granular ledger debit and credit entries",
+      "description": "Dual-sided chronological ledger entries for grains and cash.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "customerId": { "type": "string" },
         "transactionId": { "type": "string" },
         "entryType": { "type": "string" },
+        "quantity": { "type": "number" },
         "unit": { "type": "string" },
+        "amount": { "type": "number" },
         "direction": { "type": "string" },
+        "description": { "type": "string" },
         "date": { "type": "string" },
-        "createdAt": { "type": "string", "format": "date-time" }
+        "createdAt": { "type": "string" }
       },
-      "required": ["id", "customerId", "transactionId", "entryType", "direction", "date", "createdAt"]
+      "required": ["id", "customerId", "transactionId", "entryType", "direction", "description", "date", "createdAt"]
     },
-    "Settings": {
-      "title": "Settings",
-      "description": "System configuration and business parameters",
+    "Wholesaler": {
+      "title": "Wholesaler",
+      "description": "Rice and grain wholesale buyers and sellers.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "data": { "type": "object" },
-        "updatedAt": { "type": "string", "format": "date-time" }
+        "wholesalerCode": { "type": "string" },
+        "name": { "type": "string" },
+        "phone": { "type": "string" },
+        "status": { "type": "string" },
+        "totalRicePurchasedKg": { "type": "number" },
+        "totalOutstandingPayment": { "type": "number" },
+        "isActive": { "type": "boolean" },
+        "createdAt": { "type": "string" }
       },
-      "required": ["id"]
+      "required": ["id", "wholesalerCode", "name", "status", "isActive", "createdAt"]
     },
-    "AuditLog": {
-      "title": "AuditLog",
-      "description": "Audit trail log records",
+    "InventoryMovement": {
+      "title": "InventoryMovement",
+      "description": "Stock movements in and out for wheat, rice, and flours.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "inventoryItemId": { "type": "string" },
+        "movementType": { "type": "string" },
+        "quantity": { "type": "number" },
+        "direction": { "type": "string" },
+        "referenceId": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "inventoryItemId", "movementType", "quantity", "direction", "createdAt"]
+    },
+    "RateConfiguration": {
+      "title": "RateConfiguration",
+      "description": "Business milling rates, selling prices, and grain purchase rates.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "chaliAttaExchangeRate": { "type": "number" },
+        "rollAttaExchangeRate": { "type": "number" },
+        "rollAttaSellingRate": { "type": "number" },
+        "ricePurchaseRate": { "type": "number" },
+        "effectiveFrom": { "type": "string" },
+        "isActive": { "type": "boolean" }
+      },
+      "required": ["id", "chaliAttaExchangeRate", "rollAttaExchangeRate", "rollAttaSellingRate", "ricePurchaseRate", "effectiveFrom", "isActive"]
+    },
+    "AuditLogEntry": {
+      "title": "AuditLogEntry",
+      "description": "Audit trail records for security, dispute prevention, and traceability.",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -130,43 +164,21 @@
         "entityId": { "type": "string" },
         "performedById": { "type": "string" },
         "performedByName": { "type": "string" },
-        "timestamp": { "type": "string", "format": "date-time" }
+        "reason": { "type": "string" },
+        "timestamp": { "type": "string" }
       },
-      "required": ["id", "action", "entityType", "entityId", "performedById", "timestamp"]
+      "required": ["id", "action", "entityType", "entityId", "performedById", "performedByName", "timestamp"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": { "$ref": "#/entities/User" },
-      "description": "User accounts, roles, and approval records"
-    },
-    "/customers/{customerId}": {
-      "schema": { "$ref": "#/entities/Customer" },
-      "description": "Customer profiles and ledger account states"
-    },
-    "/transactions/{transactionId}": {
-      "schema": { "$ref": "#/entities/Transaction" },
-      "description": "Chakki milling and grain exchange transactions"
-    },
-    "/payments/{paymentId}": {
-      "schema": { "$ref": "#/entities/Payment" },
-      "description": "Customer cash payment and receipt logs"
-    },
-    "/wholesalers/{wholesalerId}": {
-      "schema": { "$ref": "#/entities/Wholesaler" },
-      "description": "Wholesaler and supplier accounts"
-    },
-    "/ledger_entries/{entryId}": {
-      "schema": { "$ref": "#/entities/LedgerEntry" },
-      "description": "Itemized ledger entries for customer accounts"
-    },
-    "/settings/{settingId}": {
-      "schema": { "$ref": "#/entities/Settings" },
-      "description": "System rates, preferences, and store profile"
-    },
-    "/audit_logs/{logId}": {
-      "schema": { "$ref": "#/entities/AuditLog" },
-      "description": "Immutable operational audit trails"
-    }
+    "/users/{userId}": { "schema": "UserProfile", "description": "User profiles indexed by UID" },
+    "/customers/{customerId}": { "schema": "Customer", "description": "Customer khata profiles" },
+    "/transactions/{transactionId}": { "schema": "Transaction", "description": "Milling and trade transactions" },
+    "/payments/{paymentId}": { "schema": "Payment", "description": "Customer payments and receipts" },
+    "/ledgerEntries/{entryId}": { "schema": "LedgerEntry", "description": "Grain and cash ledger lines" },
+    "/wholesalers/{wholesalerId}": { "schema": "Wholesaler", "description": "Wholesale trade contacts" },
+    "/inventoryMovements/{movementId}": { "schema": "InventoryMovement", "description": "Inventory changes" },
+    "/settings/rates": { "schema": "RateConfiguration", "description": "Global rates configuration" },
+    "/auditLogs/{logId}": { "schema": "AuditLogEntry", "description": "Immutable security audit logs" }
   }
 }
