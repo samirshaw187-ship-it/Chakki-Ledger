@@ -71,13 +71,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const handleRoleChange = (role: UserRole.OWNER | UserRole.ADMIN) => {
     setSelectedRole(role);
     setLoginError(null);
-    if (role === UserRole.ADMIN) {
-      setLoginEmail('samirpc187@gmail.com');
-      setLoginPassword('samirCL@2025');
-    } else {
-      setLoginEmail('');
-      setLoginPassword('');
-    }
+    setLoginEmail('');
+    setLoginPassword('');
   };
 
   // Password requirement analysis
@@ -324,31 +319,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 </div>
               )}
 
-              {/* Admin Identity Banner */}
-              {selectedRole === UserRole.ADMIN && (
-                <div className="p-3 bg-purple-50/80 border border-purple-200 rounded-xl flex items-center justify-between text-xs text-purple-900">
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center text-purple-700 font-bold shrink-0">
-                      SS
-                    </div>
-                    <div>
-                      <span className="font-semibold text-stone-900 block">Samir Shaw</span>
-                      <span className="text-[11px] text-purple-800 font-mono">samirpc187@gmail.com</span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setLoginEmail('samirpc187@gmail.com');
-                      setLoginPassword('samirCL@2025');
-                    }}
-                    className="px-2.5 py-1 bg-purple-700 text-white rounded-lg text-[11px] font-semibold hover:bg-purple-800 transition-colors cursor-pointer shadow-2xs"
-                  >
-                    Auto Fill
-                  </button>
-                </div>
-              )}
-
               {/* Login Form */}
               <form onSubmit={handleLoginSubmit} className="space-y-4">
                 {/* Email Field */}
@@ -363,7 +333,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                       required
                       value={loginEmail}
                       onChange={(e) => setLoginEmail(e.target.value)}
-                      placeholder="e.g. gopal.sahu@gmail.com"
+                      placeholder={selectedRole === UserRole.ADMIN ? "e.g. samirpc187@gmail.com" : "e.g. gopal.sahu@gmail.com"}
                       className="w-full pl-10 pr-3 py-2.5 bg-stone-50 border border-stone-200 rounded-xl text-sm text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
                     />
                   </div>
