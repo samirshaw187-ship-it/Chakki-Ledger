@@ -27,6 +27,17 @@ export const SEED_USERS: User[] = [
     createdAt: '2026-01-01T00:00:00.000Z',
   },
   {
+    id: 'admin_samir_shaw_google',
+    name: 'Samir Shaw',
+    phone: '9876543210',
+    email: 'samirshaw869@gmail.com',
+    role: UserRole.ADMIN,
+    isActive: true,
+    approvalStatus: 'APPROVED',
+    password: 'samirCL@2025',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  },
+  {
     id: 'admin_master_1',
     name: 'Platform Administrator',
     phone: '9876543210',

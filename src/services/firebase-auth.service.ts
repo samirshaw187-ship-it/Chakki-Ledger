@@ -20,6 +20,8 @@ import {
   sendPasswordResetEmail,
   signOut as firebaseSignOut,
   onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
   User as FirebaseUser,
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -396,6 +398,317 @@ export class FirebaseAuthService {
       console.error('Password reset initiation error:', err);
       return { success: false, error: err.message || 'Failed to dispatch password reset email.' };
     }
+  }
+
+  /**
+   * Sign in with Google (Supports both Shop Owner and Admin)
+   */
+  public static async signInWithGoogle(
+    expectedRole: UserRole = UserRole.OWNER,
+    hintEmail?: string,
+    hintName?: string
+  ): Promise<LoginResult & { isNewAccountNeeded?: boolean; googleUser?: { email: string; name: string; uid?: string } }> {
+    let email = hintEmail?.trim().toLowerCase();
+    let displayName = hintName?.trim();
+    let authUid = '';
+
+    // If hintEmail not provided, trigger real Firebase Google Auth popup
+    if (!email) {
+      try {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const result = await signInWithPopup(auth, provider);
+        email = result.user.email?.trim().toLowerCase();
+        displayName = result.user.displayName || displayName;
+        authUid = result.user.uid;
+      } catch (popupErr: any) {
+        console.warn('Google Sign-In popup notice:', popupErr?.code, popupErr?.message);
+        if (popupErr.code === 'auth/popup-blocked') {
+          return {
+            success: false,
+            error: 'POPUP_BLOCKED',
+          };
+        }
+        if (popupErr.code === 'auth/popup-closed-by-user') {
+          return {
+            success: false,
+            error: 'Google Sign-In window was closed before completing.',
+          };
+        }
+        return {
+          success: false,
+          error: popupErr.message || 'Google authentication was not completed.',
+        };
+      }
+    }
+
+    if (!email || !isValidGmail(email)) {
+      return {
+        success: false,
+        error: 'Google Account must have a valid @gmail.com address.',
+      };
+    }
+
+    // List of authorized platform administrators
+    const ADMIN_EMAILS = ['samirpc187@gmail.com', 'samirshaw869@gmail.com', 'admin@gmail.com'];
+    const isAdminEmail = ADMIN_EMAILS.includes(email);
+
+    // Check existing profile in local memory or Firestore
+    let user = dbRepository.getUserByEmail(email);
+    if (!user && authUid) {
+      try {
+        const userDocRef = doc(db, 'users', authUid);
+        const userDocSnap = await getDoc(userDocRef);
+        if (userDocSnap.exists()) {
+          user = userDocSnap.data() as User;
+          dbRepository.addUser(user);
+        }
+      } catch (fetchErr) {
+        console.warn('Notice checking Firestore user by UID:', fetchErr);
+      }
+    }
+
+    // -------------------------------------------------------------
+    // ROLE: ADMINISTRATOR SIGN-IN
+    // -------------------------------------------------------------
+    if (expectedRole === UserRole.ADMIN) {
+      if (!isAdminEmail && (!user || user.role !== UserRole.ADMIN)) {
+        return {
+          success: false,
+          error: `Access Denied: ${email} is not authorized as an Administrator. Please select Shop Owner login.`,
+        };
+      }
+
+      const now = new Date().toISOString();
+      const adminUid = authUid || user?.id || `admin_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const adminName =
+        displayName || user?.name || (email.includes('samir') ? 'Samir Shaw' : 'Platform Administrator');
+
+      const adminUser: User = {
+        id: adminUid,
+        name: adminName,
+        phone: user?.phone || '9876543210',
+        email: email,
+        role: UserRole.ADMIN,
+        isActive: true,
+        approvalStatus: 'APPROVED',
+        password: user?.password || 'samirCL@2025',
+        createdAt: user?.createdAt || now,
+        lastLoginAt: now,
+      };
+
+      if (!user) {
+        dbRepository.addUser(adminUser);
+      } else {
+        dbRepository.updateUser(user.id, {
+          id: adminUid,
+          name: adminName,
+          lastLoginAt: now,
+          isActive: true,
+          approvalStatus: 'APPROVED',
+        });
+      }
+
+      // Sync Admin Profile to Firestore
+      try {
+        await setDoc(doc(db, 'users', adminUid), adminUser, { merge: true });
+      } catch (firestoreErr) {
+        console.warn('Notice syncing Admin to Firestore:', firestoreErr);
+      }
+
+      const session: AuthSession = {
+        user: adminUser,
+        token: `google_admin_${adminUid}_${Date.now()}`,
+        role: UserRole.ADMIN,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      AuditService.log({
+        action: AuditAction.LOGIN,
+        entityType: 'AUTH',
+        entityId: adminUid,
+        performedById: adminUid,
+        performedByName: adminName,
+        reason: `Admin logged in via Google (${adminUser.role}: ${adminUser.email})`,
+      });
+
+      return { success: true, session };
+    }
+
+    // -------------------------------------------------------------
+    // ROLE: SHOP OWNER SIGN-IN
+    // -------------------------------------------------------------
+    if (!user) {
+      return {
+        success: false,
+        isNewAccountNeeded: true,
+        googleUser: { email, name: displayName || email.split('@')[0], uid: authUid },
+        error: `No registered account found for ${email}. Please create a shop account using "Sign up with Google" below.`,
+      };
+    }
+
+    if (user.role === UserRole.ADMIN) {
+      return {
+        success: false,
+        error: `This account is authorized as an Administrator. Please select "Admin" account type to sign in.`,
+      };
+    }
+
+    if (user.approvalStatus === 'PENDING_APPROVAL') {
+      return {
+        success: false,
+        error:
+          'Your application for creating a Shop Owner account is currently under review. Please wait for Admin approval before signing in.',
+      };
+    }
+
+    if (user.approvalStatus === 'SUSPENDED') {
+      return {
+        success: false,
+        error: 'Your Shop Owner account has been temporarily suspended by the Administrator.',
+      };
+    }
+
+    if (user.approvalStatus === 'DEACTIVATED' || !user.isActive) {
+      return {
+        success: false,
+        error: 'Your Shop Owner account has been deactivated. Please contact the administrator.',
+      };
+    }
+
+    // Successful Shop Owner login
+    const now = new Date().toISOString();
+    dbRepository.updateUser(user.id, { lastLoginAt: now });
+
+    if (authUid && user.id !== authUid) {
+      try {
+        await setDoc(doc(db, 'users', authUid), { ...user, lastLoginAt: now }, { merge: true });
+      } catch (e) {
+        console.warn('Notice updating shop owner document in Firestore:', e);
+      }
+    }
+
+    const session: AuthSession = {
+      user: { ...user, lastLoginAt: now },
+      token: `google_owner_${user.id}_${Date.now()}`,
+      role: UserRole.OWNER,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    AuditService.log({
+      action: AuditAction.LOGIN,
+      entityType: 'AUTH',
+      entityId: user.id,
+      performedById: user.id,
+      performedByName: user.name,
+      reason: `Shop Owner logged in via Google (${user.role}: ${user.email})`,
+    });
+
+    return { success: true, session };
+  }
+
+  /**
+   * Sign up with Google for Shop Owner account (Submits application for Admin review)
+   */
+  public static async signUpWithGoogle(data: {
+    email?: string;
+    name?: string;
+    phone?: string;
+    shopName?: string;
+    address?: string;
+    authUid?: string;
+  }): Promise<{ success: boolean; user?: User; error?: string }> {
+    let email = data.email?.trim().toLowerCase();
+    let name = data.name?.trim();
+    let authUid = data.authUid || '';
+
+    // If email not provided, trigger Google Auth popup
+    if (!email) {
+      try {
+        const provider = new GoogleAuthProvider();
+        provider.setCustomParameters({ prompt: 'select_account' });
+        const result = await signInWithPopup(auth, provider);
+        email = result.user.email?.trim().toLowerCase();
+        name = name || result.user.displayName || email?.split('@')[0] || 'Shop Owner';
+        authUid = result.user.uid;
+      } catch (popupErr: any) {
+        if (popupErr.code === 'auth/popup-blocked') {
+          return { success: false, error: 'POPUP_BLOCKED' };
+        }
+        if (popupErr.code === 'auth/popup-closed-by-user') {
+          return {
+            success: false,
+            error: 'Google Sign-In window was closed before completing registration.',
+          };
+        }
+        return {
+          success: false,
+          error: popupErr.message || 'Google registration was not completed.',
+        };
+      }
+    }
+
+    if (!email || !isValidGmail(email)) {
+      return { success: false, error: 'Google Account must have a valid @gmail.com address.' };
+    }
+
+    // Check if account already exists
+    const existing = dbRepository.getUserByEmail(email);
+    if (existing) {
+      if (existing.role === UserRole.ADMIN) {
+        return {
+          success: false,
+          error: 'This Google account is already registered as an Administrator. Please switch to Admin login.',
+        };
+      }
+      if (existing.approvalStatus === 'APPROVED') {
+        return {
+          success: false,
+          error: 'An approved Shop Owner account already exists with this Google account. Please use Sign in with Google.',
+        };
+      }
+      return {
+        success: false,
+        error:
+          'A Shop Owner application with this Google account has already been submitted and is pending Admin review.',
+      };
+    }
+
+    const now = new Date().toISOString();
+    const uid = authUid || `user_${Date.now()}`;
+    const newUser: User = {
+      id: uid,
+      name: name || 'Shop Owner',
+      phone: data.phone || '9876543210',
+      email: email,
+      address: data.address || data.shopName || 'Registered via Google',
+      role: UserRole.OWNER,
+      isActive: false, // Inactive until approved by Admin
+      approvalStatus: 'PENDING_APPROVAL',
+      createdAt: now,
+    };
+
+    // Save to Firestore
+    try {
+      await setDoc(doc(db, 'users', uid), newUser, { merge: true });
+    } catch (docErr) {
+      console.warn('Notice saving new Google Shop Owner application to Firestore:', docErr);
+    }
+
+    // Add to local database
+    dbRepository.addUser(newUser);
+
+    // Audit log
+    AuditService.log({
+      action: AuditAction.CREATE,
+      entityType: 'SHOP_APPLICATION',
+      entityId: uid,
+      performedById: uid,
+      performedByName: newUser.name,
+      reason: `New Shop Owner application registered via Google for "${newUser.name}" (${newUser.email}). Status: PENDING_APPROVAL.`,
+    });
+
+    return { success: true, user: newUser };
   }
 
   /**

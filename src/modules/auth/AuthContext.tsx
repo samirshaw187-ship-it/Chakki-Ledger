@@ -61,7 +61,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     role?: UserRole,
     name?: string
   ): Promise<LoginResult> => {
-    const result = AuthService.loginWithGoogle(email, role, name);
+    const result = await AuthService.loginWithGoogle(email, role, name);
     if (result.success && result.session) {
       setSession(result.session);
     }

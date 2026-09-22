@@ -263,70 +263,44 @@ export class AuthService {
   }
 
   /**
-   * Sign In / Sign Up with Google
+   * Sign In with Google (Supports both Shop Owner and Admin)
    */
-  public static loginWithGoogle(
-    googleEmail: string,
+  public static async loginWithGoogle(
+    googleEmail?: string,
     role: UserRole = UserRole.OWNER,
     userName?: string
-  ): LoginResult {
-    const cleanEmail = googleEmail.trim().toLowerCase();
-    if (!cleanEmail.endsWith('@gmail.com')) {
-      return { success: false, error: 'Google Account must have a valid @gmail.com address.' };
-    }
-
-    let user = dbRepository.getUserByEmail(cleanEmail);
-
-    if (user) {
-      // Check status for shop owner
-      if (user.role === UserRole.OWNER) {
-        if (user.approvalStatus === 'PENDING_APPROVAL') {
-          return {
-            success: false,
-            error:
-              'Your application for creating a Shop Owner account is currently under review. Please wait for Admin approval before signing in.',
-          };
-        }
-        if (user.approvalStatus === 'SUSPENDED') {
-          return {
-            success: false,
-            error: 'Your Shop Owner account has been temporarily suspended by the Administrator.',
-          };
-        }
-        if (user.approvalStatus === 'DEACTIVATED' || !user.isActive) {
-          return {
-            success: false,
-            error: 'Your Shop Owner account has been deactivated.',
-          };
-        }
+  ): Promise<LoginResult & { isNewAccountNeeded?: boolean; googleUser?: { email: string; name: string; uid?: string } }> {
+    try {
+      const { FirebaseAuthService } = await import('../../services/firebase-auth.service');
+      const result = await FirebaseAuthService.signInWithGoogle(role, googleEmail, userName);
+      if (result.success && result.session) {
+        this.saveSession(result.session);
       }
-
-      dbRepository.updateUser(user.id, { lastLoginAt: new Date().toISOString() });
-      const session: AuthSession = {
-        user: { ...user, lastLoginAt: new Date().toISOString() },
-        token: `google_token_${user.id}_${Date.now()}`,
-        role: user.role,
-        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
-      };
-      this.saveSession(session);
-
-      AuditService.log({
-        action: AuditAction.LOGIN,
-        entityType: 'AUTH',
-        entityId: user.id,
-        performedById: user.id,
-        performedByName: user.name,
-        reason: `User logged in via Google (${user.role}: ${user.email})`,
-      });
-
-      return { success: true, session };
+      return result;
+    } catch (e: any) {
+      console.warn('Firebase Google Auth error:', e);
+      return { success: false, error: e?.message || 'Failed to authenticate with Google.' };
     }
+  }
 
-    // If account does not exist and role is Owner, create application or session
-    return {
-      success: false,
-      error: `No existing account found for ${cleanEmail}. Please use "Create Account" first to register your shop.`,
-    };
+  /**
+   * Register with Google (Shop Owner application)
+   */
+  public static async registerWithGoogle(data: {
+    email?: string;
+    name?: string;
+    phone?: string;
+    shopName?: string;
+    address?: string;
+    authUid?: string;
+  }): Promise<{ success: boolean; user?: User; error?: string }> {
+    try {
+      const { FirebaseAuthService } = await import('../../services/firebase-auth.service');
+      return await FirebaseAuthService.signUpWithGoogle(data);
+    } catch (e: any) {
+      console.warn('Firebase Google Registration error:', e);
+      return { success: false, error: e?.message || 'Failed to register with Google.' };
+    }
   }
 
   /**

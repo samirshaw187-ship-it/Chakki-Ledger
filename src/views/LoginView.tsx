@@ -61,11 +61,15 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [submittedEmail, setSubmittedEmail] = useState('');
 
-  // Google Sign-In Selection Modal
+  // Google Sign-In & Sign-Up State
   const [isGoogleModalOpen, setIsGoogleModalOpen] = useState(false);
   const [googleTarget, setGoogleTarget] = useState<'LOGIN' | 'REGISTER'>('LOGIN');
+  const [isGoogleLoading, setIsGoogleLoading] = useState(false);
   const [googleInputEmail, setGoogleInputEmail] = useState('');
   const [googleInputName, setGoogleInputName] = useState('');
+  const [googleInputPhone, setGoogleInputPhone] = useState('');
+  const [googleInputShopName, setGoogleInputShopName] = useState('');
+  const [googleInputAddress, setGoogleInputAddress] = useState('');
 
   // Switch role
   const handleRoleChange = (role: UserRole.OWNER | UserRole.ADMIN) => {
@@ -192,25 +196,180 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
     }
   };
 
-  // Google Login / Signup Handler
-  const handleGoogleSelect = (email: string, name: string) => {
+  // Google Sign-In / Sign-Up Trigger
+  const handleGoogleAuth = async (target: 'LOGIN' | 'REGISTER') => {
+    setLoginError(null);
+    setRegError(null);
+    setGoogleTarget(target);
+    setIsGoogleLoading(true);
+
+    try {
+      if (target === 'LOGIN') {
+        const result = await AuthService.loginWithGoogle(undefined, selectedRole);
+        if (result.success && result.session) {
+          onLoginSuccess(result.session.role);
+          return;
+        }
+
+        if (result.error === 'POPUP_BLOCKED') {
+          // Open selector modal so user can choose or input their account
+          setIsGoogleModalOpen(true);
+          return;
+        }
+
+        if (result.isNewAccountNeeded && result.googleUser) {
+          // Shop account not yet found
+          setRegEmail(result.googleUser.email);
+          setRegName(result.googleUser.name);
+          setActiveTab('REGISTER');
+          setRegError(
+            `Account ${result.googleUser.email} is not yet registered. You can complete your shop application below:`
+          );
+          return;
+        }
+
+        if (result.error) {
+          setLoginError(result.error);
+        } else {
+          setIsGoogleModalOpen(true);
+        }
+      } else {
+        // Target: REGISTER
+        // If form fields are already filled:
+        if (regEmail && regName) {
+          const result = await AuthService.registerWithGoogle({
+            email: regEmail,
+            name: regName,
+            phone: regPhone || undefined,
+            shopName: regName ? `${regName}'s Chakki` : undefined,
+            address: regAddress || undefined,
+          });
+
+          if (result.success && result.user) {
+            setSubmittedEmail(result.user.email);
+            setIsReviewModalOpen(true);
+            setRegName('');
+            setRegEmail('');
+            setRegPhone('');
+            setRegAddress('');
+            setRegPassword('');
+            return;
+          }
+        }
+
+        // Trigger popup registration
+        const result = await AuthService.registerWithGoogle({
+          name: regName || undefined,
+          phone: regPhone || undefined,
+          address: regAddress || undefined,
+        });
+
+        if (result.success && result.user) {
+          setSubmittedEmail(result.user.email);
+          setIsReviewModalOpen(true);
+          setRegName('');
+          setRegEmail('');
+          setRegPhone('');
+          setRegAddress('');
+          setRegPassword('');
+          return;
+        }
+
+        if (result.error === 'POPUP_BLOCKED') {
+          setIsGoogleModalOpen(true);
+          return;
+        }
+
+        if (result.error) {
+          setRegError(result.error);
+        } else {
+          setIsGoogleModalOpen(true);
+        }
+      }
+    } catch (e: any) {
+      console.warn('Google Auth Error:', e);
+      setIsGoogleModalOpen(true);
+    } finally {
+      setIsGoogleLoading(false);
+    }
+  };
+
+  // Google Modal Submission Handler
+  const handleGoogleSelect = async (
+    email: string,
+    name: string,
+    phone?: string,
+    shopName?: string,
+    address?: string
+  ) => {
     setIsGoogleModalOpen(false);
     setLoginError(null);
     setRegError(null);
 
-    if (googleTarget === 'REGISTER') {
-      // Pre-fill registration fields
-      setRegEmail(email);
-      setRegName(name);
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail.endsWith('@gmail.com')) {
+      if (googleTarget === 'REGISTER') {
+        setRegError('Google Account must have a valid @gmail.com address.');
+      } else {
+        setLoginError('Google Account must have a valid @gmail.com address.');
+      }
       return;
     }
 
-    // Attempt login
-    const result = AuthService.loginWithGoogle(email, selectedRole, name);
-    if (result.success && result.session) {
-      onLoginSuccess(result.session.role);
-    } else {
-      setLoginError(result.error || 'Google login failed.');
+    if (googleTarget === 'REGISTER') {
+      setIsRegLoading(true);
+      try {
+        const result = await AuthService.registerWithGoogle({
+          email: cleanEmail,
+          name: name || cleanEmail.split('@')[0],
+          phone: phone || regPhone || '9876543210',
+          shopName: shopName || regName || `${name || 'Shop'}'s Flour Mill`,
+          address: address || regAddress || 'Main Market, Local Area',
+        });
+
+        if (result.success && result.user) {
+          setSubmittedEmail(result.user.email);
+          setIsReviewModalOpen(true);
+          setRegName('');
+          setRegEmail('');
+          setRegPhone('');
+          setRegAddress('');
+          setRegPassword('');
+          setGoogleInputEmail('');
+          setGoogleInputName('');
+        } else {
+          setRegError(result.error || 'Google registration failed.');
+        }
+      } catch (err: any) {
+        setRegError(err?.message || 'Google registration failed.');
+      } finally {
+        setIsRegLoading(false);
+      }
+      return;
+    }
+
+    // Target is LOGIN
+    setIsLoginLoading(true);
+    try {
+      const result = await AuthService.loginWithGoogle(cleanEmail, selectedRole, name);
+      if (result.success && result.session) {
+        onLoginSuccess(result.session.role);
+      } else {
+        if (result.isNewAccountNeeded) {
+          setRegEmail(cleanEmail);
+          setRegName(name || cleanEmail.split('@')[0]);
+          setActiveTab('REGISTER');
+          setRegError(
+            `No registered account found for ${cleanEmail}. Please complete registration below to create your Shop Owner account:`
+          );
+        } else {
+          setLoginError(result.error || 'Google login failed.');
+        }
+      }
+    } catch (err: any) {
+      setLoginError(err?.message || 'Google login failed.');
+    } finally {
+      setIsLoginLoading(false);
     }
   };
 
@@ -449,14 +608,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               {/* Google Sign In Button at Bottom */}
               <button
                 type="button"
-                onClick={() => {
-                  setGoogleTarget('LOGIN');
-                  setIsGoogleModalOpen(true);
-                }}
-                className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white border border-stone-300 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:border-stone-400 transition-colors shadow-2xs cursor-pointer"
+                id="btn-google-signin"
+                disabled={isGoogleLoading}
+                onClick={() => handleGoogleAuth('LOGIN')}
+                className={`w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white border rounded-xl text-xs font-semibold transition-all shadow-2xs cursor-pointer ${
+                  selectedRole === UserRole.ADMIN
+                    ? 'border-purple-300 text-purple-900 hover:bg-purple-50/60 hover:border-purple-400'
+                    : 'border-stone-300 text-stone-700 hover:bg-stone-50 hover:border-stone-400'
+                }`}
               >
                 {/* Official Google 'G' Logo SVG */}
-                <svg className="w-4 h-4" viewBox="0 0 24 24">
+                <svg className="w-4 h-4 flex-shrink-0" viewBox="0 0 24 24">
                   <path
                     fill="#4285F4"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -474,23 +636,36 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                Sign in with Google
+                <span>
+                  {isGoogleLoading
+                    ? 'Connecting to Google...'
+                    : selectedRole === UserRole.ADMIN
+                    ? 'Sign in with Google as Admin'
+                    : 'Sign in with Google'}
+                </span>
               </button>
 
-              {/* Link to Register */}
-              <div className="pt-2 text-center text-xs text-stone-600">
-                Are you a new chakki proprietor?{' '}
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTab('REGISTER');
-                    setRegError(null);
-                  }}
-                  className="font-semibold text-emerald-700 hover:underline cursor-pointer"
-                >
-                  Create Shop Owner Account
-                </button>
-              </div>
+              {/* Link to Register or Admin Info */}
+              {selectedRole === UserRole.OWNER ? (
+                <div className="pt-2 text-center text-xs text-stone-600">
+                  Are you a new chakki proprietor?{' '}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveTab('REGISTER');
+                      setRegError(null);
+                    }}
+                    className="font-semibold text-emerald-700 hover:underline cursor-pointer"
+                  >
+                    Create Shop Owner Account
+                  </button>
+                </div>
+              ) : (
+                <div className="pt-2 text-center text-[11px] text-stone-500 flex items-center justify-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Platform Admin Console • Secured by Firebase & Google Identity</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -504,6 +679,41 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                 <p className="text-xs text-stone-500">
                   Register your chakki mill to manage customer khatas and grain ledgers.
                 </p>
+              </div>
+
+              {/* Quick Google Sign-Up Action */}
+              <div className="p-3 bg-emerald-50/70 border border-emerald-200/80 rounded-xl flex items-center justify-between gap-3 shadow-2xs">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold text-emerald-950">Fast 1-Click Registration</p>
+                  <p className="text-[11px] text-emerald-700">Apply with your Google (@gmail.com) account</p>
+                </div>
+                <button
+                  type="button"
+                  id="btn-google-signup-quick"
+                  disabled={isGoogleLoading}
+                  onClick={() => handleGoogleAuth('REGISTER')}
+                  className="shrink-0 flex items-center gap-2 py-1.5 px-3 bg-white border border-emerald-300 rounded-lg text-xs font-semibold text-emerald-900 hover:bg-emerald-50 hover:border-emerald-400 transition-colors shadow-2xs cursor-pointer"
+                >
+                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24">
+                    <path
+                      fill="#4285F4"
+                      d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                    />
+                    <path
+                      fill="#34A853"
+                      d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                    />
+                    <path
+                      fill="#FBBC05"
+                      d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                    />
+                    <path
+                      fill="#EA4335"
+                      d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                    />
+                  </svg>
+                  <span>{isGoogleLoading ? 'Connecting...' : 'Sign up with Google'}</span>
+                </button>
               </div>
 
               {/* Error Notification */}
@@ -701,10 +911,9 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               {/* Sign up with Google Option at Bottom */}
               <button
                 type="button"
-                onClick={() => {
-                  setGoogleTarget('REGISTER');
-                  setIsGoogleModalOpen(true);
-                }}
+                id="btn-google-signup-bottom"
+                disabled={isGoogleLoading}
+                onClick={() => handleGoogleAuth('REGISTER')}
                 className="w-full flex items-center justify-center gap-3 py-2.5 px-4 bg-white border border-stone-300 rounded-xl text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:border-stone-400 transition-colors shadow-2xs cursor-pointer"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24">
@@ -725,7 +934,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                     d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                   />
                 </svg>
-                Sign up with Google
+                <span>{isGoogleLoading ? 'Connecting to Google...' : 'Sign up with Google'}</span>
               </button>
 
               <div className="text-center text-xs text-stone-600">
@@ -828,70 +1037,335 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
       <Modal
         isOpen={isGoogleModalOpen}
         onClose={() => setIsGoogleModalOpen(false)}
-        title={googleTarget === 'LOGIN' ? 'Sign in with Google' : 'Sign up with Google'}
-        subtitle="Authenticate using your Google (@gmail.com) account"
-        maxWidth="sm"
+        title={
+          googleTarget === 'LOGIN'
+            ? selectedRole === UserRole.ADMIN
+              ? 'Admin Google Sign-In'
+              : 'Shop Owner Google Sign-In'
+            : 'Sign up with Google (Create Shop Account)'
+        }
+        subtitle={
+          googleTarget === 'LOGIN'
+            ? selectedRole === UserRole.ADMIN
+              ? 'Authorized platform administrator access'
+              : 'Sign in to your registered flour mill account'
+            : '1-Click application for chakki / flour mill proprietors'
+        }
+        maxWidth="md"
       >
         <div className="space-y-4 py-1">
-          <p className="text-xs text-stone-500">
-            Enter your Google email address to authenticate with Google Identity:
-          </p>
+          {/* Case 1: Admin Login with Google */}
+          {googleTarget === 'LOGIN' && selectedRole === UserRole.ADMIN && (
+            <div className="space-y-3">
+              <p className="text-xs text-stone-600">
+                Select your verified Administrator account or enter your admin email:
+              </p>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (googleInputEmail) {
-                handleGoogleSelect(
-                  googleInputEmail.trim(),
-                  googleInputName.trim() || googleInputEmail.split('@')[0]
-                );
-              }
-            }}
-            className="space-y-3"
-          >
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                Google Account Email <span className="text-red-500">*</span>
-              </label>
-              <div className="relative flex items-center">
-                <Mail className="absolute left-3 w-4 h-4 text-stone-400" />
-                <input
-                  type="email"
-                  required
-                  value={googleInputEmail}
-                  onChange={(e) => setGoogleInputEmail(e.target.value)}
-                  placeholder="yourname@gmail.com"
-                  className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
-                />
+              {/* Quick Select Admin Credentials */}
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSelect('samirpc187@gmail.com', 'Samir Shaw')}
+                  className="w-full flex items-center justify-between p-3 bg-purple-50/70 border border-purple-200 rounded-xl hover:bg-purple-100/70 transition-colors text-left group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-purple-600 text-white flex items-center justify-center font-bold text-xs">
+                      SS
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-purple-950 group-hover:text-purple-900">
+                        Samir Shaw
+                      </p>
+                      <p className="text-[11px] font-mono text-purple-700">samirpc187@gmail.com</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider bg-purple-200/80 text-purple-900 px-2 py-0.5 rounded-full">
+                    Primary Admin
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleGoogleSelect('samirshaw869@gmail.com', 'Samir Shaw')}
+                  className="w-full flex items-center justify-between p-3 bg-stone-50 border border-stone-200 rounded-xl hover:bg-stone-100 transition-colors text-left group cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-stone-700 text-white flex items-center justify-center font-bold text-xs">
+                      SS
+                    </div>
+                    <div>
+                      <p className="text-xs font-bold text-stone-900 group-hover:text-stone-950">
+                        Samir Shaw
+                      </p>
+                      <p className="text-[11px] font-mono text-stone-600">samirshaw869@gmail.com</p>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full">
+                    Google Identity
+                  </span>
+                </button>
               </div>
-            </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-stone-700 mb-1">
-                Account Name <span className="text-stone-400 font-normal">(optional)</span>
-              </label>
-              <div className="relative flex items-center">
-                <User className="absolute left-3 w-4 h-4 text-stone-400" />
-                <input
-                  type="text"
-                  value={googleInputName}
-                  onChange={(e) => setGoogleInputName(e.target.value)}
-                  placeholder="Your Full Name"
-                  className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
-                />
+              <div className="relative my-2">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-stone-200"></div>
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-stone-400 font-medium">Or enter email</span>
+                </div>
               </div>
-            </div>
 
-            <Button
-              type="submit"
-              variant="primary"
-              size="md"
-              className="w-full justify-center mt-2"
-              disabled={!googleInputEmail.trim().endsWith('@gmail.com')}
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (googleInputEmail) {
+                    handleGoogleSelect(
+                      googleInputEmail.trim(),
+                      googleInputName.trim() || 'Administrator'
+                    );
+                  }
+                }}
+                className="space-y-3"
+              >
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Admin Google Email <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <Mail className="absolute left-3 w-4 h-4 text-stone-400" />
+                    <input
+                      type="email"
+                      required
+                      value={googleInputEmail}
+                      onChange={(e) => setGoogleInputEmail(e.target.value)}
+                      placeholder="samirpc187@gmail.com"
+                      className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-purple-700/20 focus:border-purple-700"
+                    />
+                  </div>
+                </div>
+
+                <Button
+                  type="submit"
+                  variant="primary"
+                  size="md"
+                  className="w-full justify-center mt-2 bg-purple-700 hover:bg-purple-800"
+                  disabled={!googleInputEmail.trim().endsWith('@gmail.com')}
+                >
+                  Authenticate as Administrator
+                </Button>
+              </form>
+            </div>
+          )}
+
+          {/* Case 2: Shop Owner Login with Google */}
+          {googleTarget === 'LOGIN' && selectedRole === UserRole.OWNER && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (googleInputEmail) {
+                  handleGoogleSelect(
+                    googleInputEmail.trim(),
+                    googleInputName.trim() || googleInputEmail.split('@')[0]
+                  );
+                }
+              }}
+              className="space-y-3"
             >
-              Continue with Google
-            </Button>
-          </form>
+              <p className="text-xs text-stone-600">
+                Enter your registered Google email address to access your shop ledger:
+              </p>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Google Account Email <span className="text-red-500">*</span>
+                </label>
+                <div className="relative flex items-center">
+                  <Mail className="absolute left-3 w-4 h-4 text-stone-400" />
+                  <input
+                    type="email"
+                    required
+                    value={googleInputEmail}
+                    onChange={(e) => setGoogleInputEmail(e.target.value)}
+                    placeholder="yourshop@gmail.com"
+                    className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-stone-700 mb-1">
+                  Name <span className="text-stone-400 font-normal">(optional)</span>
+                </label>
+                <div className="relative flex items-center">
+                  <User className="absolute left-3 w-4 h-4 text-stone-400" />
+                  <input
+                    type="text"
+                    value={googleInputName}
+                    onChange={(e) => setGoogleInputName(e.target.value)}
+                    placeholder="Your Name"
+                    className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                  />
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                className="w-full justify-center mt-2"
+                disabled={!googleInputEmail.trim().endsWith('@gmail.com')}
+              >
+                Sign In as Shop Owner
+              </Button>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGoogleTarget('REGISTER');
+                  }}
+                  className="text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
+                >
+                  Need to create a new shop account? Sign up with Google &rarr;
+                </button>
+              </div>
+            </form>
+          )}
+
+          {/* Case 3: Shop Owner Registration with Google */}
+          {googleTarget === 'REGISTER' && (
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (googleInputEmail) {
+                  handleGoogleSelect(
+                    googleInputEmail.trim(),
+                    googleInputName.trim() || 'Shop Owner',
+                    googleInputPhone.trim() || '9876543210',
+                    googleInputShopName.trim() || `${googleInputName || 'My'} Flour Mill`,
+                    googleInputAddress.trim() || 'Local Market'
+                  );
+                }
+              }}
+              className="space-y-3"
+            >
+              <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900">
+                Quickly submit your Shop Owner application with Google. Upon submission, it will be placed in review for Admin approval.
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Email */}
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Google Email (@gmail.com) <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <Mail className="absolute left-3 w-4 h-4 text-stone-400" />
+                    <input
+                      type="email"
+                      required
+                      value={googleInputEmail}
+                      onChange={(e) => setGoogleInputEmail(e.target.value)}
+                      placeholder="proprietor@gmail.com"
+                      className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Proprietor Name <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <User className="absolute left-3 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      required
+                      value={googleInputName}
+                      onChange={(e) => setGoogleInputName(e.target.value)}
+                      placeholder="e.g. Ramesh Kumar"
+                      className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Phone */}
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Mobile Phone <span className="text-red-500">*</span>
+                  </label>
+                  <div className="relative flex items-center">
+                    <Phone className="absolute left-3 w-4 h-4 text-stone-400" />
+                    <input
+                      type="tel"
+                      required
+                      value={googleInputPhone}
+                      onChange={(e) => setGoogleInputPhone(e.target.value)}
+                      placeholder="e.g. 9876543210"
+                      className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Shop / Mill Name */}
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Flour Mill / Chakki Name
+                  </label>
+                  <div className="relative flex items-center">
+                    <Store className="absolute left-3 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={googleInputShopName}
+                      onChange={(e) => setGoogleInputShopName(e.target.value)}
+                      placeholder="e.g. Shri Krishna Atta Chakki"
+                      className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                    />
+                  </div>
+                </div>
+
+                {/* Address */}
+                <div>
+                  <label className="block text-xs font-semibold text-stone-700 mb-1">
+                    Location / Address
+                  </label>
+                  <div className="relative flex items-center">
+                    <MapPin className="absolute left-3 w-4 h-4 text-stone-400" />
+                    <input
+                      type="text"
+                      value={googleInputAddress}
+                      onChange={(e) => setGoogleInputAddress(e.target.value)}
+                      placeholder="e.g. Main Market, Ward 4"
+                      className="w-full pl-10 pr-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-900 focus:bg-white focus:outline-none focus:ring-2 focus:ring-emerald-700/20 focus:border-emerald-700"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <Button
+                type="submit"
+                variant="primary"
+                size="md"
+                className="w-full justify-center mt-3"
+                disabled={!googleInputEmail.trim().endsWith('@gmail.com')}
+              >
+                Submit Shop Application with Google
+              </Button>
+
+              <div className="text-center pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGoogleTarget('LOGIN');
+                  }}
+                  className="text-xs text-emerald-700 font-semibold hover:underline cursor-pointer"
+                >
+                  Already have an account? Sign in with Google &rarr;
+                </button>
+              </div>
+            </form>
+          )}
         </div>
       </Modal>
     </div>
