@@ -39,30 +39,8 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Actions: Test Role Switcher, Switch to Mobile view, User & Sign Out */}
+        {/* Right Actions: Switch to Mobile view, User & Sign Out */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Quick Role Switcher */}
-          <div className="flex items-center bg-stone-100 p-1 rounded-lg border border-stone-200 text-xs">
-            <span className="text-[11px] font-semibold text-stone-500 px-2 hidden lg:inline">
-              Role:
-            </span>
-            {([UserRole.OWNER, UserRole.ADMIN] as UserRole[]).map((role) => (
-              <button
-                key={role}
-                type="button"
-                onClick={() => onRoleChange(role)}
-                title={`Switch active test session to ${role}`}
-                className={`px-2 py-1 rounded text-xs font-medium transition-colors cursor-pointer ${
-                  activeRole === role
-                    ? 'bg-white text-stone-900 shadow-xs font-bold'
-                    : 'text-stone-600 hover:text-stone-900'
-                }`}
-              >
-                {role === UserRole.OWNER ? 'Shop Owner' : 'Admin'}
-              </button>
-            ))}
-          </div>
-
           {/* Switch to Mobile View Button */}
           <button
             type="button"

@@ -414,9 +414,13 @@ export class FirebaseSyncService {
   public static async saveAuditLog(log: AuditLogEntry): Promise<void> {
     try {
       const logRef = doc(db, 'auditLogs', log.id);
-      await setDoc(logRef, log, { merge: true });
-    } catch (e) {
-      console.error('Failed to sync audit log to Firestore:', e);
+      await setDoc(logRef, log);
+    } catch (e: any) {
+      if (e?.code === 'permission-denied') {
+        // If unauthenticated or offline, audit log remains securely tracked in local memory
+        return;
+      }
+      console.warn('Failed to sync audit log to Firestore:', e?.message || e);
     }
   }
 }

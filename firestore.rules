@@ -14,8 +14,8 @@ service cloud.firestore {
 
     function isAdmin() {
       return isAuthenticated() && (
-        request.auth.token.role == 'ADMIN' ||
-        request.auth.token.email in ['samirpc187@gmail.com', 'samirshaw869@gmail.com', 'admin@gmail.com'] ||
+        ('role' in request.auth.token && request.auth.token.role == 'ADMIN') ||
+        ('email' in request.auth.token && request.auth.token.email in ['samirpc187@gmail.com', 'samirshaw869@gmail.com', 'admin@gmail.com']) ||
         (exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
          getUserData().role == 'ADMIN')
       );
@@ -101,9 +101,10 @@ service cloud.firestore {
     // Audit Logs
     match /auditLogs/{logId} {
       allow read: if isOwnerOrAdmin();
-      allow create: if isAuthenticated();
-      // Audit logs are strictly immutable: no updates or deletes permitted
-      allow update, delete: if false;
+      allow create: if true;
+      // Audit logs are strictly immutable: no updates permitted; deletion restricted to admins
+      allow update: if false;
+      allow delete: if isAdmin();
     }
   }
 }

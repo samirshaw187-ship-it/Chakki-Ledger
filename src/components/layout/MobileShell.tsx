@@ -105,32 +105,6 @@ export const MobileShell: React.FC<MobileShellProps> = ({
             </p>
           </div>
 
-          {/* Role Switching inside Profile for fast testing */}
-          <div className="pt-2 border-t border-stone-100 space-y-1.5">
-            <span className="text-[10px] font-bold text-stone-500 uppercase tracking-wider">
-              Switch Test Role
-            </span>
-            <div className="grid grid-cols-2 gap-2">
-              {([UserRole.OWNER, UserRole.ADMIN] as UserRole[]).map((role) => (
-                <button
-                  key={role}
-                  type="button"
-                  onClick={() => {
-                    onRoleChange(role);
-                    setIsProfileModalOpen(false);
-                  }}
-                  className={`py-1.5 px-2 rounded-lg text-xs font-semibold border transition-colors cursor-pointer text-center ${
-                    activeRole === role
-                      ? 'bg-emerald-700 text-white border-emerald-700 shadow-2xs'
-                      : 'bg-stone-50 text-stone-700 border-stone-200 hover:bg-stone-100'
-                  }`}
-                >
-                  {role === UserRole.OWNER ? 'Shop Owner' : 'Admin'}
-                </button>
-              ))}
-            </div>
-          </div>
-
           {/* Action buttons */}
           <div className="pt-3 border-t border-stone-100 flex items-center justify-between">
             <Button

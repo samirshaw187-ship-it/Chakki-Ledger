@@ -75,6 +75,12 @@ function MainApp() {
   };
 
   const handleNavigate = (path: string) => {
+    // If user is not an Admin, strictly forbid navigating to admin routes
+    if (path.startsWith('/admin') && activeRole !== UserRole.ADMIN) {
+      setCurrentPath('/app/home');
+      setIsMobileLayout(true);
+      return;
+    }
     setCurrentPath(path);
     // If navigating to admin route, switch to admin layout automatically
     if (path.startsWith('/admin')) {
@@ -90,6 +96,13 @@ function MainApp() {
   };
 
   const toggleLayoutMode = () => {
+    // Shop owners cannot access admin layouts or routes
+    if (activeRole !== UserRole.ADMIN) {
+      setIsMobileLayout(true);
+      setCurrentPath('/app/home');
+      return;
+    }
+
     if (isMobileLayout) {
       setIsMobileLayout(false);
       setCurrentPath('/admin/users');
@@ -119,8 +132,11 @@ function MainApp() {
   // 2. Authorization Guard: Check if active user role can access the route
   const isRoutePermitted = canAccessPath(currentPath);
 
+  // Shop Owner is strictly mobile-only and cannot access the Admin shell
+  const shouldRenderMobile = isMobileLayout || activeRole !== UserRole.ADMIN;
+
   // 3. Mobile Layout Shell (Touch-first for shop counter owner & staff)
-  if (isMobileLayout) {
+  if (shouldRenderMobile) {
     let mobileContent: React.ReactNode = null;
 
     if (!isRoutePermitted) {
