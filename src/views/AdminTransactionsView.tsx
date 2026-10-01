@@ -16,7 +16,10 @@ import {
   Receipt,
   Layers,
   X,
+  AlertTriangle,
 } from 'lucide-react';
+import { adminNoticeService } from '../services/admin-notice.service';
+import { FlagSuspiciousModal } from '../components/domain/FlagSuspiciousModal';
 
 export interface AdminTransactionsViewProps {
   onNavigate: (path: string) => void;
@@ -29,6 +32,16 @@ export const AdminTransactionsView: React.FC<AdminTransactionsViewProps> = ({
   const [selectedType, setSelectedType] = useState<string>('ALL');
   const [selectedStatus, setSelectedStatus] = useState<string>('ALL');
   const [currentPage, setCurrentPage] = useState(1);
+  const [flaggingTransaction, setFlaggingTransaction] = useState<any>(null);
+  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
+  const [, setNoticeTicker] = useState(0);
+
+  React.useEffect(() => {
+    const unsub = adminNoticeService.subscribe(() => {
+      setNoticeTicker((prev) => prev + 1);
+    });
+    return () => unsub();
+  }, []);
   const pageSize = 15;
 
   // Query transactions via TransactionService
@@ -249,28 +262,68 @@ export const AdminTransactionsView: React.FC<AdminTransactionsViewProps> = ({
                       </td>
 
                       <td className="py-3 px-4 text-right">
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onNavigate(`/app/transactions/${t.id}`);
-                          }}
-                          className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 ml-auto px-2 py-1 rounded hover:bg-emerald-50"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>View</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onNavigate(`/app/transactions/${t.id}/receipt`);
-                          }}
-                          className="text-xs font-semibold text-stone-700 hover:text-stone-950 flex items-center gap-1 ml-auto px-2 py-1 rounded hover:bg-stone-100"
-                        >
-                          <Receipt className="w-3.5 h-3.5" />
-                          <span>Receipt</span>
-                        </button>
+                        {(() => {
+                          const notice = adminNoticeService.getNoticeByTransactionId(t.id);
+                          return (
+                            <div className="flex items-center justify-end gap-1.5 flex-wrap">
+                              {notice ? (
+                                <span
+                                  className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                    notice.status === 'PENDING_REVIEW'
+                                      ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                      : notice.status === 'EXPLAINED'
+                                      ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                      : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                                  }`}
+                                  title={notice.title}
+                                >
+                                  <AlertTriangle className="w-3 h-3" />
+                                  {notice.status === 'PENDING_REVIEW'
+                                    ? 'Notice Sent'
+                                    : notice.status === 'EXPLAINED'
+                                    ? 'Explained'
+                                    : 'Resolved'}
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFlaggingTransaction(t);
+                                    setIsFlagModalOpen(true);
+                                  }}
+                                  className="text-xs font-semibold text-amber-800 hover:text-amber-950 flex items-center gap-1 px-2 py-1 rounded border border-amber-200 bg-amber-50 hover:bg-amber-100 cursor-pointer transition-colors"
+                                  title="Flag suspicious or abnormal item and inform shop owner"
+                                >
+                                  <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+                                  <span>Flag Item</span>
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNavigate(`/app/transactions/${t.id}`);
+                                }}
+                                className="text-xs font-semibold text-emerald-800 hover:text-emerald-950 flex items-center gap-1 px-2 py-1 rounded hover:bg-emerald-50 cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                                <span>View</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onNavigate(`/app/transactions/${t.id}/receipt`);
+                                }}
+                                className="text-xs font-semibold text-stone-700 hover:text-stone-950 flex items-center gap-1 px-2 py-1 rounded hover:bg-stone-100 cursor-pointer"
+                              >
+                                <Receipt className="w-3.5 h-3.5" />
+                                <span>Receipt</span>
+                              </button>
+                            </div>
+                          );
+                        })()}
                       </td>
                     </tr>
                   );
@@ -309,6 +362,16 @@ export const AdminTransactionsView: React.FC<AdminTransactionsViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Flag Suspicious Item Modal */}
+      <FlagSuspiciousModal
+        isOpen={isFlagModalOpen}
+        onClose={() => {
+          setIsFlagModalOpen(false);
+          setFlaggingTransaction(null);
+        }}
+        transaction={flaggingTransaction}
+      />
     </div>
   );
 };

@@ -20,8 +20,10 @@ import {
   LogOut,
   User as UserIcon,
   Banknote,
+  AlertTriangle,
 } from 'lucide-react';
 import { canAccessRoute, ROLE_METADATA } from '../../modules/auth';
+import { adminNoticeService } from '../../services/admin-notice.service';
 
 export interface DesktopSidebarProps {
   activePath: string;
@@ -53,6 +55,7 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
         { path: '/admin/transactions', label: 'Transactions', icon: Receipt },
         { path: '/admin/payments', label: 'Payments & Dues', icon: Banknote },
         { path: '/admin/inventory', label: 'Inventory', icon: Boxes },
+        { path: '/admin/suspicious-notices', label: 'Suspicious Audits', icon: AlertTriangle },
       ],
     },
     {
@@ -149,7 +152,16 @@ export const DesktopSidebar: React.FC<DesktopSidebarProps> = ({
                       <Icon className="w-4 h-4 shrink-0" />
                       {!isCollapsed && <span>{item.label}</span>}
                     </div>
-                    {!isCollapsed && isActive && <ChevronRight className="w-3.5 h-3.5 opacity-80" />}
+                    {!isCollapsed && (
+                      <div className="flex items-center gap-1.5">
+                        {item.path === '/admin/suspicious-notices' && adminNoticeService.getPendingNoticesCount() > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-stone-900 shadow-2xs">
+                            {adminNoticeService.getPendingNoticesCount()}
+                          </span>
+                        )}
+                        {isActive && <ChevronRight className="w-3.5 h-3.5 opacity-80" />}
+                      </div>
+                    )}
                   </button>
                 );
               })}

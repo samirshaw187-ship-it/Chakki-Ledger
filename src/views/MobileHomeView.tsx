@@ -1,6 +1,7 @@
 import React from 'react';
 import { SummaryCard } from '../components/domain/SummaryCard';
 import { TransactionCard } from '../components/domain/TransactionCard';
+import { ShopOwnerNoticeAlertBanner } from '../components/domain/ShopOwnerNoticeAlertBanner';
 import { Plus, ArrowRight, IndianRupee, Wheat, ShoppingBag, AlertCircle } from 'lucide-react';
 import { Transaction } from '../types';
 import { dbRepository } from '../db/in-memory-db';
@@ -77,6 +78,9 @@ export const MobileHomeView: React.FC<MobileHomeViewProps> = ({ onNavigate, user
         </h2>
         <p className="text-xs text-stone-500 mt-0.5">{todayFormatted}</p>
       </div>
+
+      {/* Admin Security & Suspicious Notices Alert Banner */}
+      <ShopOwnerNoticeAlertBanner />
 
       {/* 2. Primary Hero Action: + New Transaction */}
       <div>

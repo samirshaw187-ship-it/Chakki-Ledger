@@ -39,18 +39,13 @@ export const DesktopHeader: React.FC<DesktopHeaderProps> = ({
           </div>
         </div>
 
-        {/* Right Actions: Switch to Mobile view, User & Sign Out */}
+        {/* Right Actions: Desktop Console status, User & Sign Out */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Switch to Mobile View Button */}
-          <button
-            type="button"
-            onClick={onToggleLayout}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-stone-300 text-xs font-semibold text-emerald-800 bg-emerald-50/60 hover:bg-emerald-100/70 transition-colors cursor-pointer"
-            title="Switch to Mobile Shop Counter view (/app)"
-          >
-            <Smartphone className="w-3.5 h-3.5 text-emerald-700" />
-            <span className="hidden sm:inline">Mobile Counter View</span>
-          </button>
+          {/* Desktop Mode Indicator */}
+          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-purple-200 text-xs font-semibold text-purple-900 bg-purple-50">
+            <Shield className="w-3.5 h-3.5 text-purple-700" />
+            <span>Admin Desktop View</span>
+          </div>
 
           {/* User badge & Logout */}
           <div className="flex items-center gap-2 pl-2 border-l border-stone-200">

@@ -31,12 +31,12 @@ import { RiceProfitView } from './views/RiceProfitView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 import { AdminReportsView } from './views/AdminReportsView';
 import { AdminModuleView } from './views/AdminModuleView';
+import { AdminSuspiciousNoticesView } from './views/admin/AdminSuspiciousNoticesView';
 import { BackupExportView } from './views/BackupExportView';
 import { LoginView } from './views/LoginView';
 import { TransactionCard } from './components/domain/TransactionCard';
 import { AccessDenied } from './components/domain/AccessDenied';
 import { dbRepository } from './db/in-memory-db';
-import { FirebaseSyncService } from './lib/firebase-sync.service';
 import { ArrowLeft } from 'lucide-react';
 
 function MainApp() {
@@ -51,14 +51,6 @@ function MainApp() {
 
   const [currentPath, setCurrentPath] = useState<string>('/app/home');
   const [isMobileLayout, setIsMobileLayout] = useState<boolean>(true);
-
-  // Initialize real-time synchronization with Firestore on component mount
-  useEffect(() => {
-    const unsub = FirebaseSyncService.initAllRealtimeListeners();
-    return () => {
-      unsub();
-    };
-  }, []);
 
   // Synchronize role switch with AuthService and auto-navigate if route is forbidden
   const handleRoleChange = (newRole: UserRole) => {
@@ -119,7 +111,7 @@ function MainApp() {
         onLoginSuccess={(loggedRole) => {
           if (loggedRole === UserRole.ADMIN) {
             setIsMobileLayout(false);
-            setCurrentPath('/admin/users');
+            setCurrentPath('/admin/dashboard');
           } else {
             setIsMobileLayout(true);
             setCurrentPath('/app/home');
@@ -132,8 +124,8 @@ function MainApp() {
   // 2. Authorization Guard: Check if active user role can access the route
   const isRoutePermitted = canAccessPath(currentPath);
 
-  // Shop Owner is strictly mobile-only and cannot access the Admin shell
-  const shouldRenderMobile = isMobileLayout || activeRole !== UserRole.ADMIN;
+  // Admin is strictly desktop-only and Shop Owner is strictly mobile-only
+  const shouldRenderMobile = activeRole !== UserRole.ADMIN;
 
   // 3. Mobile Layout Shell (Touch-first for shop counter owner & staff)
   if (shouldRenderMobile) {
@@ -316,6 +308,8 @@ function MainApp() {
     adminContent = <WholesalersView wholesalerId={currentPath.split('/')[3]} onNavigate={handleNavigate} />;
   } else if (currentPath === '/admin/transactions' || currentPath === '/app/transactions') {
     adminContent = <AdminTransactionsView onNavigate={handleNavigate} />;
+  } else if (currentPath === '/admin/suspicious-notices') {
+    adminContent = <AdminSuspiciousNoticesView onNavigate={handleNavigate} />;
   } else if (currentPath === '/admin/payments' || currentPath === '/app/payments') {
     adminContent = <AdminPaymentsView onNavigate={handleNavigate} />;
   } else if (currentPath.startsWith('/admin/transactions/') || currentPath.startsWith('/app/transactions/')) {

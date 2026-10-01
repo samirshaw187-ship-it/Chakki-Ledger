@@ -11,15 +11,30 @@ import {
   Lightbulb,
   Receipt,
   Clock,
+  AlertTriangle,
+  ShieldAlert,
 } from 'lucide-react';
 import { dbRepository } from '../db/in-memory-db';
 import { RiceTradingService } from '../services/rice-trading.service';
+import { adminNoticeService } from '../services/admin-notice.service';
+import { FlagSuspiciousModal } from '../components/domain/FlagSuspiciousModal';
 
 export interface AdminDashboardViewProps {
   onNavigate: (path: string) => void;
 }
 
 export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNavigate }) => {
+  const [flaggingTx, setFlaggingTx] = React.useState<any>(null);
+  const [isFlagModalOpen, setIsFlagModalOpen] = React.useState(false);
+  const [noticeCount, setNoticeCount] = React.useState(() => adminNoticeService.getPendingNoticesCount());
+
+  React.useEffect(() => {
+    const unsub = adminNoticeService.subscribe(() => {
+      setNoticeCount(adminNoticeService.getPendingNoticesCount());
+    });
+    return () => unsub();
+  }, []);
+
   const transactions = dbRepository.getTransactions();
   const ricePurchases = RiceTradingService.getRicePurchases();
   const riceSales = RiceTradingService.getWholesaleSales();
@@ -143,6 +158,32 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
           variant="emerald"
         />
       </div>
+
+      {/* Admin Security & Suspicious Notices Alert Card */}
+      {noticeCount > 0 && (
+        <div className="p-4 bg-amber-50/90 border border-amber-300 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 bg-amber-100 text-amber-800 rounded-xl shrink-0">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="font-bold text-sm text-amber-950">
+                {noticeCount} Suspicious Item Notice(s) Awaiting Shop Owner Review
+              </h4>
+              <p className="text-xs text-amber-900/80 mt-0.5">
+                Admin inquiries have been dispatched to the Shop Owner counter app for abnormal quantities or rate discrepancies.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => onNavigate('/admin/suspicious-notices')}
+            className="px-3 py-2 bg-amber-800 text-white rounded-xl text-xs font-semibold hover:bg-amber-900 transition-colors shrink-0 cursor-pointer shadow-xs"
+          >
+            Review Notices & Explanations →
+          </button>
+        </div>
+      )}
 
       {/* 2-Column Trends: Revenue Trend & Rice Profit Trend */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -281,21 +322,69 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
                   <th className="p-3.5">Type</th>
                   <th className="p-3.5">Quantity / Amount Summary</th>
                   <th className="p-3.5 text-center">Status</th>
+                  <th className="p-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-stone-100">
-                {recentTransactions.map((tx) => (
-                  <tr key={tx.id} className="hover:bg-stone-50/60 transition-colors">
-                    <td className="p-3.5 font-mono font-semibold text-stone-700">{tx.transactionNumber}</td>
-                    <td className="p-3.5 text-stone-500">{new Date(tx.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
-                    <td className="p-3.5 font-bold text-stone-900">{tx.customerName || 'General'}</td>
-                    <td className="p-3.5 font-medium text-stone-700">{tx.type}</td>
-                    <td className="p-3.5 font-mono text-stone-600">₹{(tx.netAmount || 0).toFixed(2)}</td>
-                    <td className="p-3.5 text-center">
-                      <StatusBadge status={tx.status} />
-                    </td>
-                  </tr>
-                ))}
+                {recentTransactions.map((tx) => {
+                  const notice = adminNoticeService.getNoticeByTransactionId(tx.id);
+                  return (
+                    <tr key={tx.id} className="hover:bg-stone-50/60 transition-colors">
+                      <td className="p-3.5 font-mono font-semibold text-stone-700">{tx.transactionNumber}</td>
+                      <td className="p-3.5 text-stone-500">{new Date(tx.date).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</td>
+                      <td className="p-3.5 font-bold text-stone-900">{tx.customerName || 'General'}</td>
+                      <td className="p-3.5 font-medium text-stone-700">{tx.type}</td>
+                      <td className="p-3.5 font-mono text-stone-600">₹{(tx.netAmount || 0).toFixed(2)}</td>
+                      <td className="p-3.5 text-center">
+                        <StatusBadge status={tx.status} />
+                      </td>
+                      <td className="p-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5">
+                          {notice ? (
+                            <span
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${
+                                notice.status === 'PENDING_REVIEW'
+                                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                                  : notice.status === 'EXPLAINED'
+                                  ? 'bg-blue-100 text-blue-900 border-blue-300'
+                                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+                              }`}
+                              title={notice.title}
+                            >
+                              <AlertTriangle className="w-3 h-3" />
+                              {notice.status === 'PENDING_REVIEW'
+                                ? 'Flagged'
+                                : notice.status === 'EXPLAINED'
+                                ? 'Explained'
+                                : 'Resolved'}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setFlaggingTx(tx);
+                                setIsFlagModalOpen(true);
+                              }}
+                              className="px-2 py-1 bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded font-semibold text-[11px] flex items-center gap-1 cursor-pointer transition-colors"
+                              title="Flag as suspicious or abnormal item and inform shop owner"
+                            >
+                              <AlertTriangle className="w-3 h-3 text-amber-700" />
+                              <span>Flag Item</span>
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(`/app/transactions/${tx.id}`)}
+                            className="px-2 py-1 hover:bg-stone-100 text-stone-700 rounded font-semibold text-[11px] cursor-pointer"
+                          >
+                            View
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -341,6 +430,16 @@ export const AdminDashboardView: React.FC<AdminDashboardViewProps> = ({ onNaviga
           </div>
         </div>
       </div>
+
+      {/* Flag Suspicious Item Modal */}
+      <FlagSuspiciousModal
+        isOpen={isFlagModalOpen}
+        onClose={() => {
+          setIsFlagModalOpen(false);
+          setFlaggingTx(null);
+        }}
+        transaction={flaggingTx}
+      />
     </div>
   );
 };

@@ -663,7 +663,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
               ) : (
                 <div className="pt-2 text-center text-[11px] text-stone-500 flex items-center justify-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Platform Admin Console • Secured by Firebase & Google Identity</span>
+                  <span>Platform Admin Console • Secured Identity & Access Management</span>
                 </div>
               )}
             </div>
@@ -1081,27 +1081,6 @@ export const LoginView: React.FC<LoginViewProps> = ({ onLoginSuccess }) => {
                   </div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider bg-purple-200/80 text-purple-900 px-2 py-0.5 rounded-full">
                     Primary Admin
-                  </span>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => handleGoogleSelect('samirshaw869@gmail.com', 'Samir Shaw')}
-                  className="w-full flex items-center justify-between p-3 bg-stone-50 border border-stone-200 rounded-xl hover:bg-stone-100 transition-colors text-left group cursor-pointer"
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-stone-700 text-white flex items-center justify-center font-bold text-xs">
-                      SS
-                    </div>
-                    <div>
-                      <p className="text-xs font-bold text-stone-900 group-hover:text-stone-950">
-                        Samir Shaw
-                      </p>
-                      <p className="text-[11px] font-mono text-stone-600">samirshaw869@gmail.com</p>
-                    </div>
-                  </div>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider bg-stone-200 text-stone-700 px-2 py-0.5 rounded-full">
-                    Google Identity
                   </span>
                 </button>
               </div>

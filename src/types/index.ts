@@ -2,6 +2,8 @@
  * Chakki Ledger - Core Shared Types and Enums
  */
 
+export * from './schema';
+
 export enum UserRole {
   OWNER = 'OWNER',
   ADMIN = 'ADMIN',
@@ -248,6 +250,9 @@ export enum AuditAction {
   EXPORT_CREATED = 'EXPORT_CREATED',
   EXPORT_FAILED = 'EXPORT_FAILED',
   RESTORE_ATTEMPTED = 'RESTORE_ATTEMPTED',
+  SUSPICIOUS_NOTICE_CREATED = 'SUSPICIOUS_NOTICE_CREATED',
+  SUSPICIOUS_NOTICE_RESPONDED = 'SUSPICIOUS_NOTICE_RESPONDED',
+  SUSPICIOUS_NOTICE_RESOLVED = 'SUSPICIOUS_NOTICE_RESOLVED',
 }
 
 export enum GrainType {
@@ -597,5 +602,44 @@ export interface CustomerStatement {
   entries: LedgerEntry[];
   summary: CustomerStatementSummary;
   balances: CustomerAccountBalance;
+}
+
+export type SuspiciousCategory =
+  | 'ABNORMAL_PURCHASE_QUANTITY'
+  | 'ABNORMAL_SELLING_RATE'
+  | 'ABNORMAL_PURCHASE_RATE'
+  | 'SUSPICIOUS_HIGH_VOLUME'
+  | 'PRICE_DEVIATION'
+  | 'DISCREPANT_CONVERSION'
+  | 'UNUSUAL_CUSTOMER_DUES'
+  | 'OTHER_IRREGULARITY';
+
+export type SuspiciousSeverity = 'WARNING' | 'CRITICAL' | 'INQUIRY';
+
+export type SuspiciousNoticeStatus = 'PENDING_REVIEW' | 'EXPLAINED' | 'RESOLVED';
+
+export interface SuspiciousNotice {
+  id: string;
+  transactionId?: string;
+  transactionNumber?: string;
+  itemType: string;
+  customerName?: string;
+  customerId?: string;
+  quantity?: number;
+  rate?: number;
+  totalAmount?: number;
+  transactionDate?: string;
+  category: SuspiciousCategory;
+  severity: SuspiciousSeverity;
+  title: string;
+  message: string;
+  adminId: string;
+  adminName: string;
+  createdAt: string;
+  status: SuspiciousNoticeStatus;
+  shopOwnerResponse?: string;
+  respondedAt?: string;
+  resolvedAt?: string;
+  resolutionNotes?: string;
 }
 

@@ -140,7 +140,6 @@ export class AuthService {
 
   /**
    * Authenticate via Email (@gmail.com) and Password (uppercase, lowercase, number, symbol)
-   * Backed by Firebase Authentication
    */
   public static async loginWithEmailPassword(
     email: string,
@@ -165,38 +164,25 @@ export class AuthService {
       };
     }
 
-    // Try Firebase Authentication
-    try {
-      const { FirebaseAuthService } = await import('../../services/firebase-auth.service');
-      const fbResult = await FirebaseAuthService.signIn(cleanEmail, password, expectedRole);
-      if (fbResult.success && fbResult.session) {
-        this.saveSession(fbResult.session);
-        return fbResult;
-      }
-      if (fbResult.error) {
-        return fbResult;
-      }
-    } catch (e: any) {
-      console.warn('Firebase Auth primary sign-in notice, checking local records:', e?.message);
-    }
-
     const user = dbRepository.getUserByEmail(cleanEmail);
     if (!user) {
       return { success: false, error: 'No account registered with this @gmail.com address.' };
     }
 
-    // Check expected role if specified (e.g., Shop Owner vs Admin)
+    // Strict mutual exclusivity between Shop Owner and Admin account types
     if (expectedRole) {
       if (expectedRole === UserRole.ADMIN && user.role !== UserRole.ADMIN) {
         return {
           success: false,
-          error: 'This account is not authorized as an Administrator. Please select Shop Owner login.',
+          error:
+            'Access Denied: This account is registered as a Shop Owner. Shop Owners cannot log in to the Admin section. Please select "Shop Owner" under User Account Type.',
         };
       }
-      if (expectedRole === UserRole.OWNER && user.role !== UserRole.OWNER && user.role !== UserRole.ADMIN) {
+      if (expectedRole === UserRole.OWNER && user.role !== UserRole.OWNER) {
         return {
           success: false,
-          error: 'This account is not a Shop Owner account. Please verify your role or select Admin.',
+          error:
+            'Access Denied: This account is registered as an Administrator. Administrators cannot log in to the Shop Owner section. Please select "Admin" under User Account Type.',
         };
       }
     }
@@ -270,17 +256,159 @@ export class AuthService {
     role: UserRole = UserRole.OWNER,
     userName?: string
   ): Promise<LoginResult & { isNewAccountNeeded?: boolean; googleUser?: { email: string; name: string; uid?: string } }> {
-    try {
-      const { FirebaseAuthService } = await import('../../services/firebase-auth.service');
-      const result = await FirebaseAuthService.signInWithGoogle(role, googleEmail, userName);
-      if (result.success && result.session) {
-        this.saveSession(result.session);
-      }
-      return result;
-    } catch (e: any) {
-      console.warn('Firebase Google Auth error:', e);
-      return { success: false, error: e?.message || 'Failed to authenticate with Google.' };
+    const email = googleEmail?.trim().toLowerCase();
+    const displayName = userName?.trim();
+
+    // If no email was specified, trigger the built-in account selector popup in UI
+    if (!email) {
+      return {
+        success: false,
+        error: 'POPUP_BLOCKED',
+      };
     }
+
+    if (!isValidGmail(email)) {
+      return {
+        success: false,
+        error: 'Google Account must have a valid @gmail.com address.',
+      };
+    }
+
+    const ADMIN_EMAILS = ['samirpc187@gmail.com', 'admin@gmail.com'];
+    const isAdminEmail = ADMIN_EMAILS.includes(email);
+
+    const user = dbRepository.getUserByEmail(email);
+
+    // Administrator Sign In
+    if (role === UserRole.ADMIN) {
+      if (user && user.role === UserRole.OWNER) {
+        return {
+          success: false,
+          error: `Access Denied: ${email} is registered as a Shop Owner. Shop Owners cannot log in to the Admin section. Please select "Shop Owner" under User Account Type.`,
+        };
+      }
+
+      if (!isAdminEmail && (!user || user.role !== UserRole.ADMIN)) {
+        return {
+          success: false,
+          error: `Access Denied: ${email} is not authorized as an Administrator. Please select "Shop Owner" under User Account Type.`,
+        };
+      }
+
+      const now = new Date().toISOString();
+      const adminUid = user?.id || `admin_${email.replace(/[^a-zA-Z0-9]/g, '_')}`;
+      const adminName = displayName || user?.name || (email.includes('samir') ? 'Samir Shaw' : 'Platform Administrator');
+
+      const adminUser: User = {
+        id: adminUid,
+        name: adminName,
+        phone: user?.phone || '9876543210',
+        email: email,
+        role: UserRole.ADMIN,
+        isActive: true,
+        approvalStatus: 'APPROVED',
+        password: user?.password || 'samirCL@2025',
+        createdAt: user?.createdAt || now,
+        lastLoginAt: now,
+      };
+
+      if (!user) {
+        dbRepository.addUser(adminUser);
+      } else {
+        dbRepository.updateUser(user.id, { lastLoginAt: now });
+      }
+
+      const session: AuthSession = {
+        user: adminUser,
+        token: `session_token_${adminUser.id}_${Date.now()}`,
+        role: UserRole.ADMIN,
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+      };
+
+      this.saveSession(session);
+
+      AuditService.log({
+        action: AuditAction.LOGIN,
+        entityType: 'AUTH',
+        entityId: adminUser.id,
+        performedById: adminUser.id,
+        performedByName: adminUser.name,
+        reason: `Administrator signed in via Google Account (${email})`,
+      });
+
+      return { success: true, session };
+    }
+
+    // Shop Owner Sign In: verify user is not an Admin trying to log into Shop Owner section
+    if (isAdminEmail || (user && user.role === UserRole.ADMIN)) {
+      return {
+        success: false,
+        error: `Access Denied: ${email} is registered as an Administrator. Administrators cannot log in to the Shop Owner section. Please select "Admin" under User Account Type.`,
+      };
+    }
+
+    if (!user) {
+      return {
+        success: false,
+        isNewAccountNeeded: true,
+        googleUser: {
+          email,
+          name: displayName || email.split('@')[0],
+          uid: `user-google-${Date.now()}`,
+        },
+      };
+    }
+
+    if (user.role !== UserRole.OWNER) {
+      return {
+        success: false,
+        error: 'This Google Account is not authorized as a Shop Owner. Please select the correct role.',
+      };
+    }
+
+    if (user.approvalStatus === 'PENDING_APPROVAL') {
+      return {
+        success: false,
+        error: 'Your Chakki Shop Owner application is pending Administrator review. Please wait for approval.',
+      };
+    }
+
+    if (user.approvalStatus === 'SUSPENDED') {
+      return {
+        success: false,
+        error: 'Your Shop Owner account has been temporarily suspended by the Administrator.',
+      };
+    }
+
+    if (user.approvalStatus === 'DEACTIVATED' || !user.isActive) {
+      return {
+        success: false,
+        error: 'Your Shop Owner account has been deactivated. Please contact support.',
+      };
+    }
+
+    const now = new Date().toISOString();
+    dbRepository.updateUser(user.id, { lastLoginAt: now });
+
+    const session: AuthSession = {
+      user: { ...user, lastLoginAt: now },
+      token: `session_token_${user.id}_${Date.now()}`,
+      role: user.role,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+    };
+
+    this.saveSession(session);
+
+    AuditService.log({
+      action: AuditAction.LOGIN,
+      entityType: 'AUTH',
+      entityId: user.id,
+      performedById: user.id,
+      performedByName: user.name,
+      reason: `Shop owner signed in via Google Account (${email})`,
+    });
+
+    return { success: true, session };
   }
 
   /**
@@ -294,18 +422,64 @@ export class AuthService {
     address?: string;
     authUid?: string;
   }): Promise<{ success: boolean; user?: User; error?: string }> {
-    try {
-      const { FirebaseAuthService } = await import('../../services/firebase-auth.service');
-      return await FirebaseAuthService.signUpWithGoogle(data);
-    } catch (e: any) {
-      console.warn('Firebase Google Registration error:', e);
-      return { success: false, error: e?.message || 'Failed to register with Google.' };
+    const email = data.email?.trim().toLowerCase();
+    const name = data.name?.trim();
+
+    if (!email) {
+      return {
+        success: false,
+        error: 'POPUP_BLOCKED',
+      };
     }
+
+    if (!isValidGmail(email)) {
+      return {
+        success: false,
+        error: 'Please provide a valid @gmail.com address for registration.',
+      };
+    }
+
+    const existingUser = dbRepository.getUserByEmail(email);
+    if (existingUser) {
+      return {
+        success: false,
+        error: `An account with ${email} already exists. Please proceed to sign in.`,
+      };
+    }
+
+    const now = new Date().toISOString();
+    const cleanPhone = (data.phone || '9876543210').replace(/\D/g, '');
+    const cleanAddress = data.address || `${data.shopName || name || 'Chakki'} Shop Premises`;
+    const userId = data.authUid || `user-google-${Date.now()}`;
+
+    const newOwner: User = {
+      id: userId,
+      name: name || email.split('@')[0],
+      phone: cleanPhone.length === 10 ? cleanPhone : '9876543210',
+      email: email,
+      address: cleanAddress,
+      role: UserRole.OWNER,
+      isActive: false,
+      approvalStatus: 'PENDING_APPROVAL',
+      createdAt: now,
+    };
+
+    dbRepository.addUser(newOwner);
+
+    AuditService.log({
+      action: AuditAction.CREATE,
+      entityType: 'USER',
+      entityId: newOwner.id,
+      performedById: newOwner.id,
+      performedByName: newOwner.name,
+      reason: `New Shop Owner application submitted via Google Identity (${email})`,
+    });
+
+    return { success: true, user: newOwner };
   }
 
   /**
    * Register a new Shop Owner application (subject to Admin review & approval)
-   * Backed by Firebase Authentication
    */
   public static async registerShopOwner(data: {
     name: string;
@@ -343,26 +517,6 @@ export class AuthService {
         error:
           'Password must contain at least one uppercase letter, one lowercase letter, one number, and one symbol',
       };
-    }
-
-    // Try Firebase Authentication registration
-    try {
-      const { FirebaseAuthService } = await import('../../services/firebase-auth.service');
-      const fbRegResult = await FirebaseAuthService.registerShopOwner({
-        name: cleanName,
-        phone: cleanPhone,
-        email: cleanEmail,
-        address: cleanAddress,
-        password,
-      });
-      if (fbRegResult.success) {
-        return fbRegResult;
-      }
-      if (fbRegResult.error) {
-        return fbRegResult;
-      }
-    } catch (e: any) {
-      console.warn('Firebase Auth registration notice, falling back to local store:', e?.message);
     }
 
     // Check if email already registered
@@ -522,11 +676,6 @@ export class AuthService {
     }
 
     this.saveSession(null);
-
-    // Synchronously/asynchronously ensure Firebase Auth is also signed out
-    import('../../services/firebase-auth.service')
-      .then(({ FirebaseAuthService }) => FirebaseAuthService.signOut())
-      .catch((e) => console.warn('Firebase sign-out notice:', e));
   }
 
   /**

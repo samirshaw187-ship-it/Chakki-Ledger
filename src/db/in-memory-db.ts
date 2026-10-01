@@ -41,7 +41,6 @@ import {
 } from './seed-data';
 import { DEFAULT_RATE_CONFIGURATION } from '../config/business.config';
 import { AuditService } from '../services/audit.service';
-import { FirebaseSyncService } from '../lib/firebase-sync.service';
 
 class InMemoryDatabase {
   private users: User[] = [...SEED_USERS];
@@ -205,23 +204,28 @@ class InMemoryDatabase {
       user.rejectionReason = reason;
     }
     this.notifyListeners();
-    FirebaseSyncService.updateUser(user.id, {
-      approvalStatus: user.approvalStatus,
-      isActive: user.isActive,
-      rejectionReason: user.rejectionReason,
-    });
     return user;
   }
 
-  public addUser(userData: Omit<User, 'id' | 'createdAt'>): User {
+  public addUser(userData: Partial<User> & Omit<User, 'id' | 'createdAt'> & { id?: string; createdAt?: string }): User {
+    const existingIndex = userData.id ? this.users.findIndex((u) => u.id === userData.id) : -1;
+    const now = new Date().toISOString();
     const newUser: User = {
+      phone: '',
+      name: '',
+      role: UserRole.OWNER,
+      isActive: true,
       ...userData,
-      id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-      createdAt: new Date().toISOString(),
+      id: userData.id || `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      createdAt: userData.createdAt || (existingIndex >= 0 ? this.users[existingIndex].createdAt : now),
     };
-    this.users.push(newUser);
+
+    if (existingIndex >= 0) {
+      this.users[existingIndex] = newUser;
+    } else {
+      this.users.push(newUser);
+    }
     this.notifyListeners();
-    FirebaseSyncService.saveUser(newUser);
     return newUser;
   }
 
@@ -230,18 +234,14 @@ class InMemoryDatabase {
     if (index === -1) return undefined;
     this.users[index] = { ...this.users[index], ...updates };
     this.notifyListeners();
-    FirebaseSyncService.saveUser(this.users[index]);
     return this.users[index];
   }
 
   public deleteUser(id: string): boolean {
     const index = this.users.findIndex((u) => u.id === id);
     if (index === -1) return false;
-    const removed = this.users.splice(index, 1)[0];
+    this.users.splice(index, 1);
     this.notifyListeners();
-    if (removed) {
-      FirebaseSyncService.deleteUser(removed.id);
-    }
     return true;
   }
 
@@ -250,7 +250,6 @@ class InMemoryDatabase {
     if (user) {
       user.isActive = !user.isActive;
       this.notifyListeners();
-      FirebaseSyncService.updateUser(user.id, { isActive: user.isActive });
     }
     return user;
   }
@@ -295,7 +294,6 @@ class InMemoryDatabase {
     };
     this.customers.push(newCustomer);
     this.notifyListeners();
-    FirebaseSyncService.saveCustomer(newCustomer);
     return newCustomer;
   }
 
@@ -308,7 +306,6 @@ class InMemoryDatabase {
       updatedAt: new Date().toISOString(),
     };
     this.notifyListeners();
-    FirebaseSyncService.saveCustomer(this.customers[index]);
     return this.customers[index];
   }
 
@@ -346,7 +343,6 @@ class InMemoryDatabase {
       this.transactions.unshift(savedTxn);
     }
     this.notifyListeners();
-    FirebaseSyncService.saveTransaction(savedTxn);
     return savedTxn;
   }
 
@@ -390,12 +386,10 @@ class InMemoryDatabase {
       if (customer) {
         customer.currentDueAmount += newTxn.balanceDelta || 0;
         customer.lastTransactionAt = newTxn.createdAt;
-        FirebaseSyncService.saveCustomer(customer);
       }
     }
 
     this.notifyListeners();
-    FirebaseSyncService.saveTransaction(newTxn);
     return newTxn;
   }
 
@@ -424,12 +418,10 @@ class InMemoryDatabase {
       if (customer) {
         const reduction = newPayment.appliedToBillAmount !== undefined ? newPayment.appliedToBillAmount : newPayment.amount;
         customer.currentDueAmount = Math.max(0, (customer.currentDueAmount || 0) - reduction);
-        FirebaseSyncService.saveCustomer(customer);
       }
     }
 
     this.notifyListeners();
-    FirebaseSyncService.savePayment(newPayment);
     return newPayment;
   }
 
@@ -438,7 +430,6 @@ class InMemoryDatabase {
     if (index === -1) return undefined;
     this.payments[index] = { ...this.payments[index], ...updates };
     this.notifyListeners();
-    FirebaseSyncService.savePayment(this.payments[index]);
     return this.payments[index];
   }
 
@@ -470,7 +461,6 @@ class InMemoryDatabase {
     };
     this.wholesalers.unshift(wholesaler);
     this.notifyListeners();
-    FirebaseSyncService.saveWholesaler(wholesaler);
     return { ...wholesaler };
   }
 
@@ -479,7 +469,6 @@ class InMemoryDatabase {
     if (index < 0) return undefined;
     this.wholesalers[index] = { ...this.wholesalers[index], ...updates, updatedAt: new Date().toISOString() };
     this.notifyListeners();
-    FirebaseSyncService.saveWholesaler(this.wholesalers[index]);
     return { ...this.wholesalers[index] };
   }
 
@@ -536,7 +525,6 @@ class InMemoryDatabase {
     };
     this.ledgerEntries.unshift(newEntry);
     this.notifyListeners();
-    FirebaseSyncService.saveLedgerEntry(newEntry);
     return newEntry;
   }
 
@@ -626,7 +614,6 @@ class InMemoryDatabase {
     };
     this.inventoryMovements.unshift(created);
     this.notifyListeners();
-    FirebaseSyncService.saveInventoryMovement(created);
     return { ...created };
   }
 
@@ -637,7 +624,6 @@ class InMemoryDatabase {
   public updateRateConfig(updates: Partial<RateConfiguration>): RateConfiguration {
     this.rateConfig = { ...this.rateConfig, ...updates, effectiveFrom: new Date().toISOString() };
     this.notifyListeners();
-    FirebaseSyncService.saveRateConfig(this.rateConfig);
     return { ...this.rateConfig };
   }
 

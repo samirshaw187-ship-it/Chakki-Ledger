@@ -21,6 +21,8 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { Button } from '../components/ui/Button';
 import { Modal } from '../components/ui/Modal';
 import { PaymentModal } from '../components/domain/PaymentModal';
+import { FlagSuspiciousModal } from '../components/domain/FlagSuspiciousModal';
+import { adminNoticeService } from '../services/admin-notice.service';
 import { formatRupees, formatKg, safeMultiply, formatDate } from '../utils/precision';
 import {
   ArrowLeft,
@@ -76,6 +78,19 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
   const [modalError, setModalError] = useState<string | null>(null);
   const [isSubmittingAction, setIsSubmittingAction] = useState(false);
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
+  const [isFlagModalOpen, setIsFlagModalOpen] = useState(false);
+  const [existingNotice, setExistingNotice] = useState(() =>
+    txn ? adminNoticeService.getNoticeByTransactionId(txn.id) : undefined
+  );
+
+  React.useEffect(() => {
+    const unsub = adminNoticeService.subscribe(() => {
+      if (txn) {
+        setExistingNotice(adminNoticeService.getNoticeByTransactionId(txn.id));
+      }
+    });
+    return () => unsub();
+  }, [txn]);
   const [expandedAuditLogId, setExpandedAuditLogId] = useState<string | null>(null);
 
   // Editable items state for correction
@@ -312,6 +327,16 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
               <span>Profit Breakdown</span>
             </button>
           )}
+          {role === UserRole.ADMIN && (
+            <button
+              type="button"
+              onClick={() => setIsFlagModalOpen(true)}
+              className="text-xs font-semibold text-amber-800 hover:text-amber-950 flex items-center gap-1.5 cursor-pointer bg-amber-50 hover:bg-amber-100 px-2.5 py-1 rounded-lg border border-amber-300 shadow-2xs transition-colors"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-700" />
+              <span>{existingNotice ? 'Update Notice' : 'Flag Suspicious / Inform Owner'}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => onNavigate(`/app/transactions/${txn.id}/receipt`)}
@@ -332,6 +357,42 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Existing Notice Alert Banner */}
+      {existingNotice && (
+        <div className="p-3.5 bg-amber-50/90 border border-amber-300 rounded-2xl shadow-2xs space-y-2 text-xs text-amber-950">
+          <div className="flex items-center justify-between">
+            <span className="font-bold flex items-center gap-2 text-amber-900">
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>Admin Security & Audit Notice ({existingNotice.severity})</span>
+            </span>
+            <span
+              className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                existingNotice.status === 'PENDING_REVIEW'
+                  ? 'bg-amber-100 text-amber-900 border-amber-300'
+                  : existingNotice.status === 'EXPLAINED'
+                  ? 'bg-blue-100 text-blue-900 border-blue-300'
+                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+              }`}
+            >
+              {existingNotice.status === 'PENDING_REVIEW'
+                ? 'Pending Shop Owner Review'
+                : existingNotice.status === 'EXPLAINED'
+                ? 'Explained by Shop Owner'
+                : 'Resolved'}
+            </span>
+          </div>
+          <p className="text-stone-700 leading-relaxed font-medium">"{existingNotice.message}"</p>
+          {existingNotice.shopOwnerResponse && (
+            <div className="bg-white/90 p-2.5 rounded-xl border border-amber-200 text-emerald-950 mt-1">
+              <span className="font-bold text-[10px] uppercase text-emerald-800 block">
+                Shop Owner Official Response:
+              </span>
+              <p className="font-medium mt-0.5">"{existingNotice.shopOwnerResponse}"</p>
+            </div>
+          )}
+        </div>
+      )}
 
       {actionSuccess && (
         <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center gap-2">
@@ -1542,6 +1603,13 @@ export const TransactionDetailView: React.FC<TransactionDetailViewProps> = ({
           }}
         />
       )}
+
+      {/* Flag Suspicious Item Modal */}
+      <FlagSuspiciousModal
+        isOpen={isFlagModalOpen}
+        onClose={() => setIsFlagModalOpen(false)}
+        transaction={txn}
+      />
     </div>
   );
 };

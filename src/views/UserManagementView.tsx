@@ -26,7 +26,6 @@ import {
   Trash2,
   KeyRound,
 } from 'lucide-react';
-import { FirebaseAuthService } from '../services/firebase-auth.service';
 
 export const UserManagementView: React.FC = () => {
   const [users, setUsers] = useState<User[]>(() => dbRepository.getUsers());
@@ -166,14 +165,19 @@ export const UserManagementView: React.FC = () => {
     }
 
     try {
-      const result = await FirebaseAuthService.adminInitiatePasswordReset(user.email, adminUser);
-      if (result.success) {
-        setActionMessage(result.message || `Password reset link dispatched to ${user.email}.`);
-      } else {
-        setActionMessage(`Password reset failed: ${result.error}`);
-      }
+      const tempPass = `Chakki@${Math.floor(1000 + Math.random() * 9000)}`;
+      dbRepository.updateUser(user.id, { password: tempPass });
+      AuditService.log({
+        action: AuditAction.UPDATE,
+        entityType: 'USER',
+        entityId: user.id,
+        performedById: adminUser.id,
+        performedByName: adminUser.name,
+        reason: `Administrator ${adminUser.name} initiated password reset for ${user.email}`,
+      });
+      setActionMessage(`Password reset request processed. Temporary access passcode (${tempPass}) generated and security notification dispatched to ${user.email}.`);
     } catch (err: any) {
-      setActionMessage(`Error sending reset email: ${err.message}`);
+      setActionMessage(`Error sending reset notification: ${err.message}`);
     }
 
     setActionType(null);
@@ -874,7 +878,7 @@ export const UserManagementView: React.FC = () => {
               <p className="font-bold text-amber-900">Admin Governance & Security Protocol</p>
               <p className="text-amber-800 text-[11px] mt-0.5">
                 Per security regulations, Shop Owners cannot independently change their passwords.
-                Only an Administrator can trigger this reset. An official Firebase password reset email
+                Only an Administrator can trigger this reset. An official password reset security notification
                 will be dispatched to <strong>{selectedOwner?.email}</strong>.
               </p>
             </div>

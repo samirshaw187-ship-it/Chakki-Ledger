@@ -39,12 +39,6 @@ export class AuditService {
     };
 
     this.memoryAuditLogs.unshift(fullEntry);
-    
-    // Async firestore sync without blocking
-    import('../lib/firebase-sync.service').then(({ FirebaseSyncService }) => {
-      FirebaseSyncService.saveAuditLog(fullEntry);
-    }).catch(() => {});
-
     return fullEntry;
   }
 
